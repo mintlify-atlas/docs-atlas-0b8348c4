@@ -1,0 +1,111 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Wormkey",
+  "projectDescription": "Open a wormhole to your localhost - instant secure tunneling for local development",
+  "theme": "aspen",
+  "primaryColor": "#8b5cf6",
+  "lightColor": "#a78bfa",
+  "darkColor": "#7c3aed",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "CLI Commands",
+            "pages": [
+              "cli/http",
+              "cli/login",
+              "cli/status",
+              "cli/close"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/basic-auth",
+              "guides/react-integration",
+              "guides/overlay-helpers",
+              "guides/session-configuration"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/protocol",
+              "architecture/components"
+            ]
+          },
+          {
+            "group": "Self-Hosting",
+            "pages": [
+              "self-hosting/setup",
+              "self-hosting/environment-variables",
+              "self-hosting/deployment"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "React Components",
+            "pages": [
+              "api/wormkey-overlay"
+            ]
+          },
+          {
+            "group": "Overlay Helpers",
+            "pages": [
+              "api/overlay-auto",
+              "api/overlay-express",
+              "api/overlay-react"
+            ]
+          },
+          {
+            "group": "Control Plane API",
+            "pages": [
+              "api/sessions/create-session",
+              "api/sessions/get-session",
+              "api/sessions/update-policy",
+              "api/sessions/manage-viewers"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Instant localhost tunneling with secure WebSocket protocol",
+    "CLI tool with simple commands (wormkey http <port>)",
+    "In-app overlay for viewer control and session management",
+    "React component and overlay helpers for easy integration",
+    "Basic auth support with auto-generated credentials",
+    "Session-based routing with memorable slugs",
+    "Self-hostable control plane and edge gateway"
+  ],
+  "publicApiSurface": [
+    "wormkey http <port>",
+    "wormkey login",
+    "wormkey status",
+    "wormkey close",
+    "<WormkeyOverlay />",
+    "@wormkey/overlay/auto",
+    "@wormkey/overlay/express",
+    "@wormkey/overlay/react",
+    "POST /sessions",
+    "GET /sessions/:id",
+    "GET /sessions/by-slug/:slug",
+    "POST /sessions/by-slug/:slug/policy"
+  ]
+}
