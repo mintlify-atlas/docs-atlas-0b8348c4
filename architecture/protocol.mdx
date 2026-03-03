@@ -1,0 +1,310 @@
+---
+title: "Tunnel Protocol"
+description: "WebSocket frame format and stream multiplexing protocol (v0)"
+---
+
+## Protocol Overview
+
+Wormkey uses a custom binary protocol over WebSocket to multiplex HTTP and WebSocket traffic between the Edge Gateway and CLI client.
+
+<Note>
+**Transport**: Persistent WebSocket connection (CLI → Edge Gateway)  
+**Encoding**: Binary frames with fixed 5-byte header  
+**Version**: v0 (subject to change)
+</Note>
+
+## Frame Format
+
+All frames use a consistent structure:
+
+```
+┌─────────────┬─────────────┬─────────────────────────────────┐
+│  Type (1B)  │ StreamID(4B)│  Payload (variable)             │
+└─────────────┴─────────────┴─────────────────────────────────┘
+```
+
+| Field | Size | Type | Description |
+|-------|------|------|-------------|
+| **Type** | 1 byte | uint8 | Frame type identifier (0x01-0x0A) |
+| **StreamID** | 4 bytes | uint32 (big-endian) | Stream identifier; 0 for control frames |
+| **Payload** | Variable | bytes | Frame-specific data |
+
+### Stream ID Semantics
+
+- **Stream ID 0**: Reserved for control frames (PING/PONG)
+- **Stream ID 1+**: HTTP request/response streams
+- Stream IDs are allocated by Edge Gateway
+- Stream IDs are unique per tunnel connection
+- Stream IDs are not reused within a connection
+
+## Frame Types
+
+### Control Frames
+
+| Type | Value | Direction | Payload | Description |
+|------|-------|-----------|---------|-------------|
+| **PING** | 0x09 | Both | None | Keepalive ping |
+| **PONG** | 0x0A | Both | None | Keepalive response |
+
+### HTTP Stream Frames
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| **OPEN_STREAM** | 0x01 | Edge → CLI | New incoming HTTP request |
+| **RESPONSE_HEADERS** | 0x05 | CLI → Edge | HTTP response status and headers |
+| **STREAM_DATA** | 0x02 | Both | Request or response body chunk |
+| **STREAM_END** | 0x03 | Both | End of stream (normal close) |
+| **STREAM_CANCEL** | 0x04 | Both | Abort stream (error or timeout) |
+
+### WebSocket Frames
+
+| Type | Value | Direction | Description |
+|------|-------|-----------|-------------|
+| **WS_UPGRADE** | 0x06 | Edge → CLI | Upgrade stream to WebSocket mode |
+| **WS_DATA** | 0x07 | Both | Raw WebSocket frame data |
+| **WS_CLOSE** | 0x08 | Both | WebSocket close |
+
+## Stream Lifecycle
+
+### HTTP Request/Response
+
+```
+┌──────────────┐                                    ┌──────────────┐
+│ Edge Gateway │                                    │  CLI Client  │
+└──────┬───────┘                                    └──────┬───────┘
+       │                                                   │
+       │  OPEN_STREAM (streamId=1, GET /api/users)       │
+       │──────────────────────────────────────────────────►
+       │                                                   │
+       │         RESPONSE_HEADERS (200 OK, headers)        │
+       │◄──────────────────────────────────────────────────│
+       │                                                   │
+       │            STREAM_DATA (chunk 1)                  │
+       │◄──────────────────────────────────────────────────│
+       │                                                   │
+       │            STREAM_DATA (chunk 2)                  │
+       │◄──────────────────────────────────────────────────│
+       │                                                   │
+       │               STREAM_END                          │
+       │◄──────────────────────────────────────────────────│
+       │                                                   │
+```
+
+**Step-by-step**:
+
+1. **Edge receives HTTP request** → Allocates stream ID → Sends `OPEN_STREAM` with method, path, headers
+2. **CLI receives `OPEN_STREAM`** → Proxies request to `localhost:port`
+3. **CLI sends `RESPONSE_HEADERS`** → Status code + HTTP headers
+4. **CLI sends `STREAM_DATA`** (0 or more times) → Response body chunks
+5. **CLI sends `STREAM_END`** → Stream complete
+
+<Note>
+The CLI streams response chunks as they arrive from localhost. This enables progressive rendering for streaming responses (e.g., React Server Components, Server-Sent Events).
+</Note>
+
+### Request Body Handling
+
+For requests with body (POST, PUT, PATCH):
+
+```
+Edge → CLI:  OPEN_STREAM
+Edge → CLI:  STREAM_DATA (body chunk 1)
+Edge → CLI:  STREAM_DATA (body chunk 2)
+Edge → CLI:  STREAM_END
+
+CLI → Edge:  RESPONSE_HEADERS
+CLI → Edge:  STREAM_DATA (response)
+CLI → Edge:  STREAM_END
+```
+
+The CLI buffers `STREAM_DATA` frames until receiving `STREAM_END`, then makes the full HTTP request to localhost.
+
+### Stream Cancellation
+
+Either side can cancel a stream:
+
+```
+Edge → CLI:  OPEN_STREAM (streamId=5)
+[Client disconnects or times out]
+Edge → CLI:  STREAM_CANCEL (streamId=5)
+```
+
+Upon receiving `STREAM_CANCEL`, the CLI must:
+- Stop forwarding to localhost
+- Abort any pending HTTP requests
+- Send `STREAM_END` or `STREAM_CANCEL` back (optional)
+
+## Payload Formats
+
+### OPEN_STREAM Payload
+
+HTTP request serialized as:
+
+```
+GET /api/users?page=1 HTTP/1.1\r\n
+Host: localhost:3000\r\n
+User-Agent: Mozilla/5.0\r\n
+Accept: application/json\r\n
+\r\n
+```
+
+Format: HTTP request line + headers (standard HTTP format)
+
+### RESPONSE_HEADERS Payload
+
+HTTP response status and headers:
+
+```
+HTTP/1.1 200 OK\r\n
+Content-Type: application/json\r\n
+Content-Length: 42\r\n
+\r\n
+```
+
+Format: Status line + headers (standard HTTP format)
+
+### STREAM_DATA Payload
+
+Raw bytes (request or response body chunk)
+
+### STREAM_END Payload
+
+Empty (no payload)
+
+### STREAM_CANCEL Payload
+
+Empty (no payload)
+
+## WebSocket Upgrade
+
+When Edge Gateway detects `Upgrade: websocket` header:
+
+```
+┌──────────────┐                                    ┌──────────────┐
+│ Edge Gateway │                                    │  CLI Client  │
+└──────┬───────┘                                    └──────┬───────┘
+       │                                                   │
+       │  WS_UPGRADE (streamId=3, ws://localhost:3000/ws) │
+       │──────────────────────────────────────────────────►
+       │                                                   │
+       │        WS_DATA (WebSocket frame 1)                │
+       │◄─────────────────────────────────────────────────►│
+       │                                                   │
+       │        WS_DATA (WebSocket frame 2)                │
+       │◄─────────────────────────────────────────────────►│
+       │                                                   │
+       │               WS_CLOSE                            │
+       │◄─────────────────────────────────────────────────►│
+       │                                                   │
+```
+
+**Differences from HTTP**:
+
+- No `RESPONSE_HEADERS` frame
+- Stream switches to raw bidirectional mode
+- `WS_DATA` contains raw WebSocket frames (not HTTP-encoded)
+- Both sides can send `WS_DATA` at any time
+- Stream ends with `WS_CLOSE`
+
+## Keepalive (PING/PONG)
+
+Both CLI and Edge Gateway implement keepalive:
+
+### CLI Behavior
+
+```typescript
+// CLI sends PING every 25 seconds
+setInterval(() => {
+  send(FrameType.PING, streamId=0)
+}, 25000)
+
+// CLI expects PONG within 30 seconds
+// After 2 consecutive failures, reconnect
+if (pongTimeout > 30s && failures >= 2) {
+  reconnect()
+}
+```
+
+From source code:
+```typescript
+const PING_INTERVAL_MS = 25000;
+const PONG_TIMEOUT_MS = 30000;
+const HEARTBEAT_FAILURES_BEFORE_CLOSE = 2;
+```
+
+### Edge Gateway Behavior
+
+- Responds to PING with PONG immediately
+- Does not initiate PINGs (CLI is responsible)
+
+<Warning>
+If the CLI misses 2 consecutive PONGs, it will close the connection and reconnect. This ensures dead connections are detected within ~60 seconds.
+</Warning>
+
+## Connection Lifecycle
+
+### Initial Connection
+
+1. **CLI**: POST `/sessions` to Control Plane → Receives `sessionToken`
+2. **CLI**: WebSocket connect to Edge Gateway `/tunnel`
+   - Header: `Authorization: Bearer <sessionToken>`
+3. **Edge Gateway**: Validates token, binds `slug` → connection
+4. **Tunnel established**: Ready to accept streams
+
+### Reconnection
+
+If CLI loses connection:
+
+1. **CLI**: Wait with exponential backoff (1s, 2s, 5s, 10s)
+2. **CLI**: Reconnect to `/tunnel` with **same `sessionToken`**
+3. **Edge Gateway**: Replaces old connection for `slug`
+4. **Old connection**: Closed automatically
+5. **Public URL**: Remains valid (no interruption for users)
+
+<Note>
+Sessions persist across reconnections. The same `sessionToken` can be reused until the session expires or is closed.
+</Note>
+
+### Session Expiration
+
+Sessions have configurable expiration:
+
+```bash
+wormkey http 3000 --expires 30m  # 30 minutes
+wormkey http 3000 --expires 2h   # 2 hours
+```
+
+Default: 24 hours
+
+After expiration:
+- Control Plane rejects new tunnel connections
+- Public URL returns 404
+- CLI must create a new session
+
+## Protocol Limits
+
+| Limit | Value | Enforced By |
+|-------|-------|-------------|
+| Max concurrent streams per tunnel | 100 | Edge Gateway |
+| Max request body size | 10 MB | Edge Gateway |
+| Idle timeout (no PING/PONG) | 5 minutes | Edge Gateway |
+| PING interval | 25 seconds | CLI |
+| PONG timeout | 30 seconds | CLI |
+| Reconnect backoff | 1s, 2s, 5s, 10s | CLI |
+| Max heartbeat failures | 2 | CLI |
+
+<Warning>
+These limits are subject to change and may be configurable in future versions.
+</Warning>
+
+## Implementation Reference
+
+See source code:
+- **Frame encoding/decoding**: `packages/cli/src/protocol.ts`
+- **CLI tunnel client**: `packages/cli/src/tunnel.ts`
+- **Edge Gateway handler**: `packages/gateway/main.go`
+
+## Next Steps
+
+- [Component Details](/architecture/components) - How each component implements the protocol
+- [Architecture Overview](/architecture/overview) - High-level system design

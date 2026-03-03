@@ -1,0 +1,385 @@
+---
+title: Session Configuration
+description: Configure session expiry, policies, and viewer limits
+---
+
+# Session Configuration
+
+Wormkey sessions control how long your wormhole stays open and who can access it. Configure expiry, viewer limits, and access policies.
+
+## Session Creation
+
+Sessions are created when you run `wormkey http <port>`. The control plane returns:
+
+```json
+{
+  "sessionId": "sess_a1b2c3d4...",
+  "slug": "quiet-lime-42",
+  "publicUrl": "https://wormkey.run/s/quiet-lime-42",
+  "ownerUrl": "https://wormkey.run/.wormkey/owner?slug=quiet-lime-42&token=...",
+  "overlayScriptUrl": "https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-42",
+  "edgeUrl": "wss://t.wormkey.run/tunnel",
+  "sessionToken": "quiet-lime-42.ownertoken123",
+  "expiresAt": "2026-03-04T12:00:00.000Z"
+}
+```
+
+## Expiry Configuration
+
+Control how long your wormhole stays active using the `--expires` flag.
+
+### Syntax
+
+```bash
+wormkey http <port> --expires <duration>
+```
+
+### Duration Formats
+
+<Tabs>
+  <Tab title="Minutes">
+    ```bash
+    wormkey http 3000 --expires 30m
+    ```
+
+    Session expires after 30 minutes.
+  </Tab>
+
+  <Tab title="Hours">
+    ```bash
+    wormkey http 3000 --expires 2h
+    ```
+
+    Session expires after 2 hours.
+  </Tab>
+
+  <Tab title="Default">
+    ```bash
+    wormkey http 3000
+    ```
+
+    No `--expires` flag defaults to **24 hours**.
+  </Tab>
+</Tabs>
+
+### Examples
+
+```bash
+# Quick demo (30 minutes)
+wormkey http 3000 --expires 30m
+
+# Client review (4 hours)
+wormkey http 5173 --expires 4h
+
+# All-day access (24 hours, default)
+wormkey http 8080 --expires 24h
+```
+
+### How Expiry Works
+
+<Steps>
+  <Step title="Parse duration">
+    The control plane converts `30m` → 30 * 60 * 1000 ms, or `2h` → 2 * 60 * 60 * 1000 ms.
+  </Step>
+
+  <Step title="Calculate expiry timestamp">
+    Sets `expiresAt = Date.now() + expiresMs`.
+  </Step>
+
+  <Step title="Store in session">
+    Session object includes:
+    ```json
+    {
+      "expiresAt": "2026-03-04T12:00:00.000Z",
+      "createdAt": "2026-03-03T12:00:00.000Z"
+    }
+    ```
+  </Step>
+
+  <Step title="Enforce at edge">
+    The edge gateway rejects requests after `expiresAt`.
+  </Step>
+</Steps>
+
+## Session Policy
+
+Sessions include a policy object that controls access and behavior:
+
+```ts
+policy: {
+  public: boolean;              // Allow public access
+  maxConcurrentViewers: number; // Viewer limit (default: 20)
+  blockPaths: string[];         // Blocked URL paths
+  password: string;             // Password protection
+}
+```
+
+### Default Policy
+
+```json
+{
+  "public": true,
+  "maxConcurrentViewers": 20,
+  "blockPaths": [],
+  "password": ""
+}
+```
+
+### Update Policy
+
+Use the control plane API to modify session policy:
+
+```bash
+POST /sessions/by-slug/:slug/policy
+```
+
+**Request body**:
+
+```json
+{
+  "public": false,
+  "maxConcurrentViewers": 5,
+  "blockPaths": ["/admin", "/api/secret"],
+  "password": "mysecret123"
+}
+```
+
+**Response**:
+
+```json
+{
+  "ok": true,
+  "policy": {
+    "public": false,
+    "maxConcurrentViewers": 5,
+    "blockPaths": ["/admin", "/api/secret"],
+    "password": "mysecret123"
+  }
+}
+```
+
+## Viewer Management
+
+Sessions track active viewers in real-time.
+
+### Active Viewers
+
+```ts
+activeViewers: Array<{
+  id: string;          // Unique viewer ID
+  lastSeenAt: string;  // ISO timestamp
+  requests: number;    // Request count
+  ip?: string;         // Client IP (optional)
+}>
+```
+
+### Update Viewers
+
+The edge gateway periodically reports active viewers:
+
+```bash
+POST /sessions/by-slug/:slug/viewers
+```
+
+**Request body**:
+
+```json
+{
+  "viewers": [
+    {
+      "id": "viewer_abc123",
+      "lastSeenAt": "2026-03-03T12:30:00.000Z",
+      "requests": 15,
+      "ip": "203.0.113.42"
+    }
+  ]
+}
+```
+
+### Kick Viewer
+
+Remove a specific viewer from the session:
+
+```bash
+POST /sessions/by-slug/:slug/kick
+```
+
+**Request body**:
+
+```json
+{
+  "viewerId": "viewer_abc123"
+}
+```
+
+**Response**:
+
+```json
+{
+  "ok": true,
+  "kickedViewerIds": ["viewer_abc123"]
+}
+```
+
+Kicked viewers are permanently blocked for the session duration.
+
+## Close Session
+
+Manually close a session before expiry:
+
+```bash
+POST /sessions/by-slug/:slug/close
+```
+
+**Response**:
+
+```json
+{
+  "ok": true
+}
+```
+
+Sets `session.closed = true`. The edge gateway rejects all future requests.
+
+### CLI Close
+
+Press `Ctrl+C` in the terminal running `wormkey http` to close the tunnel and session.
+
+## Authentication Modes
+
+Sessions support multiple authentication strategies.
+
+### None (Default)
+
+```bash
+wormkey http 3000
+```
+
+No authentication required. Anyone with the URL can access.
+
+### Basic Auth
+
+```bash
+wormkey http 3000 --auth
+```
+
+Generates username/password:
+
+```json
+{
+  "authMode": "basic",
+  "username": "worm",
+  "password": "a1b2c3d4"
+}
+```
+
+See [Basic Authentication](/guides/basic-auth) for details.
+
+## Environment Variables
+
+Customize control plane and edge URLs:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORMKEY_CONTROL_PLANE_URL` | `https://wormkey-control-plane.onrender.com` | Control plane API URL |
+| `WORMKEY_EDGE_URL` | `wss://t.wormkey.run/tunnel` | Edge tunnel WebSocket URL |
+| `WORMKEY_PUBLIC_BASE_URL` | `https://wormkey.run` | Public gateway base URL |
+
+### Local Development
+
+Override for local testing:
+
+```bash
+export WORMKEY_CONTROL_PLANE_URL=http://localhost:3001
+export WORMKEY_EDGE_URL=ws://localhost:3002/tunnel
+export WORMKEY_PUBLIC_BASE_URL=http://localhost:3002
+
+wormkey http 3000
+```
+
+Or use the `--local` flag:
+
+```bash
+wormkey http 3000 --local
+```
+
+## Session Lifecycle
+
+<Steps>
+  <Step title="Create">
+    Run `wormkey http <port>`. Control plane allocates slug, generates tokens, stores session.
+  </Step>
+
+  <Step title="Active">
+    Edge gateway proxies requests to your localhost. Viewers tracked in real-time.
+  </Step>
+
+  <Step title="Expire or Close">
+    Session ends when:
+    - `expiresAt` timestamp reached
+    - Owner closes via API or `Ctrl+C`
+    - Control plane restarts (in-memory store)
+  </Step>
+
+  <Step title="Cleanup">
+    Session removed from memory. Public URL returns 404.
+  </Step>
+</Steps>
+
+## Best Practices
+
+<Card title="Short-lived sessions" icon="clock">
+  Use `--expires 30m` or `--expires 1h` for temporary demos to minimize exposure.
+</Card>
+
+<Card title="Combine auth + expiry" icon="lock">
+  ```bash
+  wormkey http 3000 --auth --expires 2h
+  ```
+  Protect sensitive work with credentials and time limits.
+</Card>
+
+<Card title="Monitor active viewers" icon="users">
+  Check the owner overlay to see who's connected and kick unauthorized viewers.
+</Card>
+
+## API Reference
+
+### Create Session
+
+```bash
+POST /sessions
+```
+
+**Body**:
+
+```json
+{
+  "port": 3000,
+  "authMode": "basic",
+  "expiresIn": "2h"
+}
+```
+
+### Get Session by ID
+
+```bash
+GET /sessions/:id
+```
+
+### Get Session by Slug
+
+```bash
+GET /sessions/by-slug/:slug
+```
+
+### Delete Session
+
+```bash
+DELETE /sessions/:id
+```
+
+## Related
+
+- [Basic Authentication](/guides/basic-auth) - Enable username/password protection
+- [CLI Reference](/cli/http) - Full `wormkey http` command options

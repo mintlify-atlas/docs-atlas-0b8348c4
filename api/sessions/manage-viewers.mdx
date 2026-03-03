@@ -1,0 +1,150 @@
+---
+title: "Manage Viewers"
+api: "POST /sessions/by-slug/:slug/viewers"
+---
+
+Manage active viewers and kick viewers from a session.
+
+## Update Active Viewers
+
+Update the list of currently active viewers for a session.
+
+### Endpoint
+
+```
+POST /sessions/by-slug/:slug/viewers
+```
+
+### Path Parameters
+
+<ParamField path="slug" type="string" required>
+  The session slug (format: `adjective-noun-number`)
+</ParamField>
+
+### Request Body
+
+<ParamField body="viewers" type="array" required>
+  Array of active viewer objects
+  
+  <ParamField body="id" type="string" required>
+    Unique viewer identifier
+  </ParamField>
+  
+  <ParamField body="lastSeenAt" type="string" required>
+    ISO 8601 timestamp of the viewer's last activity
+  </ParamField>
+  
+  <ParamField body="requests" type="number" required>
+    Total number of requests made by this viewer
+  </ParamField>
+  
+  <ParamField body="ip" type="string">
+    Viewer's IP address (optional)
+  </ParamField>
+</ParamField>
+
+### Response
+
+<ResponseField name="ok" type="boolean" required>
+  Whether the update was successful
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://control.wormkey.io/sessions/by-slug/quiet-lime-42/viewers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "viewers": [
+      {
+        "id": "viewer_abc123",
+        "lastSeenAt": "2026-03-03T15:35:00.000Z",
+        "requests": 42,
+        "ip": "203.0.113.42"
+      },
+      {
+        "id": "viewer_xyz789",
+        "lastSeenAt": "2026-03-03T15:36:00.000Z",
+        "requests": 18,
+        "ip": "203.0.113.89"
+      }
+    ]
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "ok": true
+}
+```
+
+---
+
+## Kick Viewer
+
+Remove a viewer from the session and add them to the kicked list to prevent rejoining.
+
+### Endpoint
+
+```
+POST /sessions/by-slug/:slug/kick
+```
+
+### Path Parameters
+
+<ParamField path="slug" type="string" required>
+  The session slug (format: `adjective-noun-number`)
+</ParamField>
+
+### Request Body
+
+<ParamField body="viewerId" type="string" required>
+  The ID of the viewer to kick from the session
+</ParamField>
+
+### Response
+
+<ResponseField name="ok" type="boolean" required>
+  Whether the kick was successful
+</ResponseField>
+
+<ResponseField name="kickedViewerIds" type="string[]" required>
+  Updated array of all kicked viewer IDs
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://control.wormkey.io/sessions/by-slug/quiet-lime-42/kick \
+  -H "Content-Type: application/json" \
+  -d '{
+    "viewerId": "viewer_abc123"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "ok": true,
+  "kickedViewerIds": ["viewer_abc123"]
+}
+```
+
+### Behavior
+
+- The viewer is removed from the `activeViewers` list
+- The viewer ID is added to the `kickedViewerIds` list (if not already present)
+- Kicked viewers cannot rejoin the session
+
+### Error Response
+
+Both endpoints return a 404 error if the session is not found:
+
+```json
+{
+  "error": "Session not found"
+}
+```

@@ -1,0 +1,186 @@
+---
+title: "@wormkey/overlay/react"
+description: "React component for injecting the Wormkey overlay script"
+---
+
+## Overview
+
+The `WormkeyOverlay` component injects the Wormkey overlay control bar into React applications. It's designed for Next.js and other React frameworks with support for client components.
+
+## Installation
+
+```bash
+npm install @wormkey/overlay
+```
+
+## Usage
+
+### Next.js App Router
+
+```tsx
+// app/layout.tsx
+import { WormkeyOverlay } from "@wormkey/overlay/react";
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        {children}
+        <WormkeyOverlay
+          gatewayUrl={process.env.NEXT_PUBLIC_WORMKEY_GATEWAY_URL ?? "https://wormkey.run"}
+        />
+      </body>
+    </html>
+  );
+}
+```
+
+### With Full Script URL
+
+```tsx
+import { WormkeyOverlay } from "@wormkey/overlay/react";
+
+export default function App() {
+  return (
+    <div>
+      <h1>My App</h1>
+      <WormkeyOverlay scriptUrl="https://wormkey.run/.wormkey/overlay.js?slug=pale-snow-91" />
+    </div>
+  );
+}
+```
+
+### With Gateway URL and Slug
+
+```tsx
+import { WormkeyOverlay } from "@wormkey/overlay/react";
+
+export default function App() {
+  return (
+    <div>
+      <h1>My App</h1>
+      <WormkeyOverlay 
+        gatewayUrl="https://wormkey.run" 
+        slug="pale-snow-91" 
+      />
+    </div>
+  );
+}
+```
+
+## API Reference
+
+### `<WormkeyOverlay />`
+
+A React component that loads the Wormkey overlay script.
+
+<ParamField path="scriptUrl" type="string" optional>
+  Full overlay script URL. When provided, this takes precedence over `gatewayUrl` and `slug`.
+  
+  Example: `"https://wormkey.run/.wormkey/overlay.js?slug=pale-snow-91"`
+</ParamField>
+
+<ParamField path="gatewayUrl" type="string" optional>
+  Gateway base URL (e.g., `"https://wormkey.run"`). Used in combination with `slug` to construct the script URL.
+  
+  Falls back to `process.env.NEXT_PUBLIC_WORMKEY_GATEWAY_URL` if not provided.
+</ParamField>
+
+<ParamField path="slug" type="string" optional>
+  Slug for the wormhole. If omitted when viewing at `/s/:slug`, it will be automatically derived from the URL path.
+</ParamField>
+
+## Behavior
+
+### Script URL Resolution
+
+The component resolves the script URL in the following order:
+
+1. **Direct `scriptUrl` prop** - Use if provided
+2. **Constructed from `gatewayUrl` + `slug`** - If both are available
+3. **Auto-detected slug from URL** - If viewing at `/s/:slug` path
+4. **Environment variable fallback** - Uses `NEXT_PUBLIC_WORMKEY_GATEWAY_URL`
+
+### Duplicate Prevention
+
+The component checks for existing script tags with `data-wormkey-overlay="1"` attribute to prevent loading the script multiple times.
+
+### Script Tag Attributes
+
+```html
+<script 
+  src="YOUR_SCRIPT_URL" 
+  defer 
+  data-wormkey-overlay="1"
+></script>
+```
+
+- `defer`: Ensures script loads after document parsing
+- `data-wormkey-overlay="1"`: Marker to prevent duplicate injections
+
+### Render Behavior
+
+The component renders `null` (no visible output) and only injects the script tag into the document.
+
+## TypeScript Types
+
+### `WormkeyOverlayProps`
+
+```ts
+interface WormkeyOverlayProps {
+  /** Full overlay script URL, e.g. https://wormkey.run/.wormkey/overlay.js?slug=pale-snow-91 */
+  scriptUrl?: string;
+  /** Gateway base URL (e.g. https://wormkey.run). Use with slug. */
+  gatewayUrl?: string;
+  /** Slug for the wormhole. If omitted and viewing at /s/:slug, derived from URL. */
+  slug?: string;
+}
+```
+
+## Examples
+
+### Option 1: Full Script URL
+
+Use when you have the complete script URL from CLI output:
+
+```tsx
+<WormkeyOverlay scriptUrl="https://wormkey.run/.wormkey/overlay.js?slug=pale-snow-91" />
+```
+
+### Option 2: Gateway + Slug
+
+Use when you want to configure the gateway and slug separately:
+
+```tsx
+<WormkeyOverlay 
+  gatewayUrl="https://wormkey.run" 
+  slug="pale-snow-91" 
+/>
+```
+
+### Option 3: Auto-Detection
+
+When your app is accessed via `/s/:slug` path, the slug is automatically detected:
+
+```tsx
+<WormkeyOverlay gatewayUrl="https://wormkey.run" />
+```
+
+### Option 4: Environment Variables
+
+Use environment variables for configuration:
+
+```tsx
+// .env.local
+NEXT_PUBLIC_WORMKEY_GATEWAY_URL=https://wormkey.run
+
+// Component
+<WormkeyOverlay />
+```
+
+## Notes
+
+- The component uses `"use client"` directive for Next.js App Router compatibility
+- Script is injected into `document.body` (not `document.head`)
+- Safe to use in server-side rendering (checks for `document` availability)
+- Re-runs when props change via `useEffect` dependencies

@@ -1,0 +1,245 @@
+---
+title: Local Development Setup
+description: Run the full Wormkey stack locally for development or self-hosting
+---
+
+This guide walks you through running the complete Wormkey infrastructure on your local machine. The stack consists of three components that work together to create secure tunnels to your localhost.
+
+## Architecture Overview
+
+| Component | Port | Role |
+|-----------|------|------|
+| **Control Plane** | 3001 | Session creation, slug allocation, lifecycle management |
+| **Gateway** | 3002 | TLS termination, routing, stream forwarding |
+| **CLI** | — | Connects to gateway, forwards traffic to localhost |
+
+## Prerequisites
+
+- Node.js 18+ and npm
+- Go 1.20+
+- Git
+
+## Installation
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/your-org/wormkey.git
+    cd wormkey
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Use the Makefile to install all dependencies at once:
+    
+    ```bash
+    make install
+    ```
+    
+    Or install each component manually:
+    
+    ```bash
+    # CLI dependencies
+    cd packages/cli && npm install
+    
+    # Control Plane dependencies
+    cd packages/control-plane && npm install
+    
+    # Gateway dependencies
+    cd packages/gateway && go mod download
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Copy the example environment file:
+    
+    ```bash
+    cp .env.example .env
+    ```
+    
+    For local development, the defaults work out of the box:
+    
+    ```bash
+    # CLI (local dev)
+    WORMKEY_CONTROL_PLANE_URL=http://localhost:3001
+    WORMKEY_EDGE_URL=ws://localhost:3002/tunnel
+    
+    # Control plane env
+    WORMKEY_PUBLIC_BASE_URL=http://localhost:3002
+    WORMKEY_EDGE_BASE_URL=ws://localhost:3002
+    ```
+    
+    See [Environment Variables](/self-hosting/environment-variables) for all configuration options.
+  </Step>
+
+  <Step title="Start the Control Plane">
+    In your first terminal:
+    
+    ```bash
+    make control-plane
+    ```
+    
+    Or manually:
+    
+    ```bash
+    cd packages/control-plane && npm run dev
+    ```
+    
+    You should see:
+    ```
+    Control plane listening on :3001
+    ```
+  </Step>
+
+  <Step title="Start the Gateway">
+    In a second terminal:
+    
+    ```bash
+    make gateway
+    ```
+    
+    Or manually:
+    
+    ```bash
+    cd packages/gateway && go run .
+    ```
+    
+    You should see:
+    ```
+    listening on 0.0.0.0:3002
+    ```
+  </Step>
+
+  <Step title="Build and install the CLI">
+    In a third terminal:
+    
+    ```bash
+    cd packages/cli
+    npm install
+    npm run build
+    npm link
+    ```
+    
+    This makes the `wormkey` command available globally.
+  </Step>
+</Steps>
+
+## Testing Your Setup
+
+<Steps>
+  <Step title="Start a local server">
+    In a new terminal, start any local web server. For example:
+    
+    ```bash
+    # Example: Start a simple HTTP server
+    python3 -m http.server 3000
+    ```
+  </Step>
+
+  <Step title="Open a wormhole">
+    In another terminal, expose your local server:
+    
+    ```bash
+    wormkey http 3000
+    ```
+    
+    You'll see output like:
+    
+    ```
+    Wormhole open.
+    http://localhost:3002?slug=quiet-lime-82
+    Owner claim URL (open once):
+    http://localhost:3002/.wormkey/owner?slug=quiet-lime-82&token=...
+    Path B integration (add in app layout):
+    <script defer src="http://localhost:3002/.wormkey/overlay.js?slug=quiet-lime-82"></script>
+    ```
+  </Step>
+
+  <Step title="Access your tunneled server">
+    Open the public URL in your browser. You should see your local server!
+    
+    To enable owner controls, open the owner claim URL once in your browser. This sets a cookie that identifies you as the tunnel owner.
+  </Step>
+</Steps>
+
+## Development Workflow
+
+### Hot Reload
+
+Both the control plane and gateway support hot reload:
+
+- **Control Plane**: Uses `npm run dev` with auto-reload on file changes
+- **Gateway**: Restart with `go run .` after making changes
+- **CLI**: Rebuild with `npm run build` after changes
+
+### Running Tests
+
+```bash
+make test
+```
+
+### Building for Production
+
+```bash
+make build
+```
+
+This compiles:
+- CLI: `packages/cli/dist/`
+- Control Plane: `packages/control-plane/dist/`
+- Gateway: Binary compilation via `go build`
+
+## CLI Usage
+
+Once installed, the CLI provides these commands:
+
+```bash
+# Expose a local port
+wormkey http <port>
+
+# With authentication
+wormkey http 3000 --auth
+
+# With custom expiration
+wormkey http 5173 --expires 30m
+```
+
+<Note>
+In v0, some commands are not yet implemented:
+- `wormkey login` - Authentication (not implemented)
+- `wormkey status` - View active tunnels (not implemented)
+- `wormkey close` - Use Ctrl+C to close tunnels
+</Note>
+
+## Troubleshooting
+
+### Control Plane won't start
+
+- **Check port 3001** is not in use: `lsof -i :3001`
+- **Verify Node.js version**: `node --version` (requires 18+)
+- Check logs for specific errors
+
+### Gateway won't start
+
+- **Check port 3002** is not in use: `lsof -i :3002`
+- **Verify Go version**: `go version` (requires 1.20+)
+- Ensure dependencies are installed: `go mod download`
+
+### CLI can't connect
+
+- Verify control plane is running on port 3001
+- Verify gateway is running on port 3002
+- Check environment variables in `.env`
+- Ensure WebSocket connections are allowed (no proxy blocking)
+
+### Tunnel disconnects immediately
+
+- Check that your local server is actually running on the specified port
+- Verify firewall isn't blocking localhost connections
+- Check gateway logs for connection errors
+
+## Next Steps
+
+- [Configure environment variables](/self-hosting/environment-variables)
+- [Deploy to production](/self-hosting/deployment)
+- [Read the protocol specification](/architecture/protocol)

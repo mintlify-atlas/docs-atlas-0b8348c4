@@ -1,0 +1,178 @@
+---
+title: 'wormkey http'
+description: 'Expose a local port via wormhole tunnel'
+---
+
+## Overview
+
+The `http` command creates a secure tunnel to expose a local HTTP server to the internet. This is the primary command for creating wormholes in Wormkey.
+
+## Usage
+
+```bash
+wormkey http <port> [options]
+```
+
+## Arguments
+
+<ParamField path="port" type="number" required>
+  The local port number to expose (1-65535)
+</ParamField>
+
+## Options
+
+<ParamField path="--auth" type="boolean" default="false">
+  Enable basic HTTP authentication. When enabled, the CLI will generate and display a username and password that must be used to access the tunnel.
+</ParamField>
+
+<ParamField path="--expires" type="string" default="24h">
+  Session expiration duration. Accepts time units like `30m`, `1h`, `24h`.
+  
+  Examples:
+  - `30m` - 30 minutes
+  - `1h` - 1 hour
+  - `24h` - 24 hours (default)
+</ParamField>
+
+<ParamField path="--control-plane" type="string">
+  Override the control plane URL. By default, uses `https://wormkey-control-plane.onrender.com` in production or `http://localhost:3001` in local mode.
+</ParamField>
+
+<ParamField path="--edge" type="string">
+  Override the edge tunnel URL. By default, uses `wss://t.wormkey.run/tunnel` in production or `ws://localhost:3002/tunnel` in local mode.
+</ParamField>
+
+<ParamField path="--local" type="boolean" default="false">
+  Use localhost control plane and edge servers for local development. This sets the control plane to `http://localhost:3001` and edge to `ws://localhost:3002/tunnel`.
+</ParamField>
+
+## Environment Variables
+
+You can configure Wormkey using environment variables instead of command-line flags:
+
+- `WORMKEY_ENV=local` - Equivalent to `--local` flag
+- `WORMKEY_CONTROL_PLANE_URL` - Override control plane URL
+- `WORMKEY_EDGE_URL` - Override edge tunnel URL
+
+## Examples
+
+<CodeGroup>
+
+```bash Basic Usage
+wormkey http 3000
+```
+
+```bash With Authentication
+wormkey http 3000 --auth
+```
+
+```bash Custom Expiry
+wormkey http 8080 --expires 30m
+```
+
+```bash Local Development
+wormkey http 3000 --local
+```
+
+```bash All Options
+wormkey http 3000 --auth --expires 2h --local
+```
+
+</CodeGroup>
+
+## Output
+
+When you run the `http` command, you'll see output like this:
+
+```bash
+$ wormkey http 3000
+Control plane: https://wormkey-control-plane.onrender.com
+Edge tunnel: wss://t.wormkey.run/tunnel
+
+Wormhole open.
+https://abc123.wormkey.run
+
+Owner claim URL (open once):
+https://wormkey.run/claim/xyz789
+
+Path B integration (add in app layout):
+<script defer src="https://wormkey.run/overlay/abc123.js"></script>
+
+Press Ctrl+C to close.
+```
+
+### With Authentication
+
+When using `--auth`, you'll see credentials displayed:
+
+```bash
+$ wormkey http 3000 --auth
+Control plane: https://wormkey-control-plane.onrender.com
+
+Basic auth enabled:
+  Username: user_abc123
+  Password: pass_xyz789
+
+Edge tunnel: wss://t.wormkey.run/tunnel
+
+Wormhole open.
+https://abc123.wormkey.run
+
+Owner claim URL (open once):
+https://wormkey.run/claim/xyz789
+
+Path B integration (add in app layout):
+<script defer src="https://wormkey.run/overlay/abc123.js"></script>
+
+Press Ctrl+C to close.
+```
+
+## Understanding the Output
+
+<ParamField path="Public URL">
+  The public HTTPS URL where your local server is accessible. Share this URL with others.
+</ParamField>
+
+<ParamField path="Owner claim URL">
+  A one-time URL to claim ownership of this tunnel. Open this link once to associate the tunnel with your account. After the first use, this URL becomes invalid.
+</ParamField>
+
+<ParamField path="Path B integration script">
+  A script tag for Path B integration. Add this to your application layout to enable collaborative browsing features.
+</ParamField>
+
+## Validation
+
+<Warning>
+  Port numbers must be between 1 and 65535. Invalid ports will result in an error:
+  
+  ```
+  Invalid port. Use 1-65535.
+  ```
+</Warning>
+
+## Closing the Tunnel
+
+<Info>
+  Press `Ctrl+C` to gracefully close the tunnel and terminate the wormhole connection.
+</Info>
+
+## Error Handling
+
+If the tunnel fails to connect, you'll see an error message:
+
+```bash
+Error: [error message]
+```
+
+Common issues:
+- Local port is not accessible or not running
+- Network connectivity problems
+- Control plane or edge server unavailable
+- Invalid session parameters
+
+## See Also
+
+- [Quick Start](/quickstart) - Get started with Wormkey
+- [Overlay Helpers](/guides/overlay-helpers) - Learn about collaborative browsing
+- [Basic Authentication](/guides/basic-auth) - Secure your tunnels

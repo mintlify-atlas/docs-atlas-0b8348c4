@@ -1,0 +1,336 @@
+---
+title: "Installation"
+description: "Install Wormkey using npm, yarn, pnpm, or run it directly with npx"
+---
+
+## Requirements
+
+- Node.js 18 or higher
+- npm, yarn, or pnpm package manager
+
+<Info>
+Check your Node.js version with `node --version`. If you need to upgrade, visit [nodejs.org](https://nodejs.org).
+</Info>
+
+## Installation methods
+
+Choose the installation method that works best for your workflow.
+
+### Global installation
+
+Install Wormkey globally to use the `wormkey` command from anywhere:
+
+<CodeGroup>
+```bash npm
+npm install -g wormkey
+```
+
+```bash yarn
+yarn global add wormkey
+```
+
+```bash pnpm
+pnpm add -g wormkey
+```
+</CodeGroup>
+
+Verify the installation:
+
+```bash
+wormkey --version
+# Output: 0.1.5
+```
+
+Now you can run `wormkey` from any directory:
+
+```bash
+wormkey http 3000
+```
+
+<Tip>
+Global installation is recommended if you use Wormkey frequently across multiple projects.
+</Tip>
+
+### Run without installing (npx)
+
+Use npx to run Wormkey without installing it globally:
+
+```bash
+npx wormkey http 3000
+```
+
+This downloads and runs the latest version of Wormkey each time. Perfect for:
+
+- One-off tunnels
+- CI/CD environments
+- Testing before installing globally
+- Always using the latest version
+
+<Note>
+The first run with npx may take a few seconds to download the package. Subsequent runs are faster if the package is cached.
+</Note>
+
+### Local installation (project-specific)
+
+Install Wormkey as a project dependency:
+
+<CodeGroup>
+```bash npm
+npm install wormkey
+```
+
+```bash yarn
+yarn add wormkey
+```
+
+```bash pnpm
+pnpm add wormkey
+```
+</CodeGroup>
+
+Add a script to your `package.json`:
+
+```json package.json
+{
+  "scripts": {
+    "tunnel": "wormkey http 3000"
+  }
+}
+```
+
+Run the tunnel:
+
+```bash
+npm run tunnel
+```
+
+<Info>
+Local installation is useful when you want to lock Wormkey to a specific version for your project or include it in your project's dependencies.
+</Info>
+
+## Verify installation
+
+Check that Wormkey is installed correctly:
+
+<Steps>
+  <Step title="Check version">
+    ```bash
+    wormkey --version
+    ```
+    
+    You should see the version number (e.g., `0.1.5`).
+  </Step>
+  
+  <Step title="View help">
+    ```bash
+    wormkey --help
+    ```
+    
+    This displays all available commands and options:
+    ```bash
+    Usage: wormkey [options] [command]
+    
+    Open a wormhole to your localhost
+    
+    Options:
+      -V, --version          output the version number
+      -h, --help             display help for command
+    
+    Commands:
+      http <port>            Expose local port via wormhole
+      login                  Authenticate with Wormkey (device flow)
+      status                 Show active tunnel status
+      close                  Close active tunnel
+      help [command]         display help for command
+    ```
+  </Step>
+  
+  <Step title="Test a tunnel">
+    Start a simple server and create a tunnel:
+    ```bash
+    # Terminal 1: Start a test server
+    python3 -m http.server 8000
+    
+    # Terminal 2: Open a wormhole
+    wormkey http 8000
+    ```
+  </Step>
+</Steps>
+
+## Update Wormkey
+
+Keep Wormkey up to date to get the latest features and fixes.
+
+### Update global installation
+
+<CodeGroup>
+```bash npm
+npm update -g wormkey
+```
+
+```bash yarn
+yarn global upgrade wormkey
+```
+
+```bash pnpm
+pnpm update -g wormkey
+```
+</CodeGroup>
+
+### Update local installation
+
+<CodeGroup>
+```bash npm
+npm update wormkey
+```
+
+```bash yarn
+yarn upgrade wormkey
+```
+
+```bash pnpm
+pnpm update wormkey
+```
+</CodeGroup>
+
+### Check for updates
+
+See if a newer version is available:
+
+```bash
+npm outdated -g wormkey
+```
+
+## Uninstall Wormkey
+
+### Remove global installation
+
+<CodeGroup>
+```bash npm
+npm uninstall -g wormkey
+```
+
+```bash yarn
+yarn global remove wormkey
+```
+
+```bash pnpm
+pnpm remove -g wormkey
+```
+</CodeGroup>
+
+### Remove local installation
+
+<CodeGroup>
+```bash npm
+npm uninstall wormkey
+```
+
+```bash yarn
+yarn remove wormkey
+```
+
+```bash pnpm
+pnpm remove wormkey
+```
+</CodeGroup>
+
+## Installing additional packages
+
+Wormkey provides additional packages for enhanced functionality.
+
+### Overlay helpers
+
+For automatic overlay integration:
+
+```bash
+npm install @wormkey/overlay
+```
+
+Use in your app:
+
+```typescript
+import "@wormkey/overlay/auto";
+```
+
+### React component
+
+The main `wormkey` package includes the React component:
+
+```bash
+npm install wormkey
+```
+
+Import in your React app:
+
+```tsx
+import { WormkeyOverlay } from "wormkey";
+```
+
+<Tip>
+The `wormkey` package has React 18+ as a peer dependency. Make sure React is installed in your project.
+</Tip>
+
+## Troubleshooting
+
+### Command not found
+
+If you see `wormkey: command not found` after global installation:
+
+1. Check that your npm global bin directory is in your PATH:
+   ```bash
+   npm config get prefix
+   ```
+
+2. Add the bin directory to your PATH:
+   ```bash
+   # Add to ~/.bashrc or ~/.zshrc
+   export PATH="$(npm config get prefix)/bin:$PATH"
+   ```
+
+3. Restart your terminal or run:
+   ```bash
+   source ~/.bashrc  # or ~/.zshrc
+   ```
+
+### Permission errors on macOS/Linux
+
+If you get permission errors during global installation:
+
+```bash
+sudo npm install -g wormkey
+```
+
+Or configure npm to use a different directory:
+
+```bash
+mkdir ~/.npm-global
+npm config set prefix '~/.npm-global'
+export PATH=~/.npm-global/bin:$PATH
+```
+
+### Version mismatch
+
+If you have multiple versions installed, check which one is being used:
+
+```bash
+which wormkey
+wormkey --version
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create your first wormhole tunnel
+  </Card>
+  <Card title="CLI commands" icon="terminal" href="/cli/http">
+    Learn about all available commands
+  </Card>
+  <Card title="Configuration" icon="gear" href="/guides/session-configuration">
+    Configure authentication and session options
+  </Card>
+  <Card title="React integration" icon="react" href="/guides/react-integration">
+    Add Wormkey to your React or Next.js app
+  </Card>
+</CardGroup>

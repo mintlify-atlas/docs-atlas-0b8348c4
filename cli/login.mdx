@@ -1,0 +1,113 @@
+---
+title: 'wormkey login'
+description: 'Authenticate with Wormkey using device flow'
+---
+
+<Warning>
+  This command is not implemented in v0. Use the local control plane for development.
+</Warning>
+
+## Overview
+
+The `login` command will authenticate your CLI with Wormkey using OAuth device flow. This feature is planned for a future release.
+
+## Usage
+
+```bash
+wormkey login
+```
+
+## Current Behavior
+
+In v0, running this command displays:
+
+```bash
+$ wormkey login
+Login not implemented in v0. Use local control plane.
+```
+
+## Planned Functionality
+
+In future versions, the `login` command will:
+
+1. **Initiate device flow** - Display a code and URL
+2. **Open browser** - Direct you to authenticate in your browser
+3. **Store credentials** - Save authentication tokens locally
+4. **Enable account features** - Access to dashboard, analytics, and tunnel management
+
+### Expected Flow
+
+```bash
+$ wormkey login
+
+To authenticate, visit:
+https://wormkey.run/device
+
+And enter code: ABCD-1234
+
+Waiting for authentication...
+✓ Successfully authenticated as user@example.com
+```
+
+## Workaround for v0
+
+<Info>
+  While `login` is not implemented, you can still use Wormkey by:
+  
+  1. Running the local control plane for development
+  2. Using the `--local` flag with `wormkey http`
+  3. Setting `WORMKEY_ENV=local` environment variable
+</Info>
+
+### Local Development Setup
+
+<CodeGroup>
+
+```bash With --local flag
+wormkey http 3000 --local
+```
+
+```bash With environment variable
+export WORMKEY_ENV=local
+wormkey http 3000
+```
+
+</CodeGroup>
+
+## Authentication in v0
+
+Currently, Wormkey v0 operates without user accounts:
+
+- **Anonymous tunnels** - No authentication required to create tunnels
+- **Owner claim URLs** - Claim tunnel ownership via one-time URLs
+- **No dashboard** - Tunnel management through CLI only
+
+## Future Enhancements
+
+When `login` is implemented, you'll gain access to:
+
+<CardGroup cols={2}>
+  <Card title="Persistent Sessions" icon="clock">
+    Tunnels associated with your account
+  </Card>
+  <Card title="Web Dashboard" icon="chart-line">
+    View and manage all your tunnels
+  </Card>
+  <Card title="Analytics" icon="chart-bar">
+    Traffic stats and usage metrics
+  </Card>
+  <Card title="Team Features" icon="users">
+    Share and collaborate on tunnels
+  </Card>
+</CardGroup>
+
+## Related Commands
+
+- [`wormkey http`](/cli/http) - Create tunnels (works without login)
+- [`wormkey status`](/cli/status) - Check tunnel status (not yet implemented)
+- [`wormkey close`](/cli/close) - Close active tunnels (not yet implemented)
+
+## See Also
+
+- [Quick Start](/quickstart) - Get started without authentication
+- [Self-Hosting Setup](/self-hosting/setup) - Run control plane locally

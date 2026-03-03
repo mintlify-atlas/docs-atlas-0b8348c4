@@ -1,0 +1,101 @@
+---
+title: "@wormkey/overlay/auto"
+description: "Auto-inject the Wormkey overlay script into your application"
+---
+
+## Overview
+
+The `auto` module automatically injects the Wormkey overlay script into your application when imported. It detects the overlay script URL from a meta tag or global variable and loads it without requiring manual setup.
+
+## Installation
+
+```bash
+npm install @wormkey/overlay
+```
+
+## Usage
+
+### Basic Import
+
+Simply import the module in your application entry point:
+
+```ts
+import "@wormkey/overlay/auto";
+```
+
+### Provide Script URL via Meta Tag
+
+Add a meta tag to your HTML with the overlay script URL:
+
+```html
+<meta name="wormkey-overlay-url" content="http://localhost:3002/.wormkey/overlay.js?slug=quiet-lime-82" />
+```
+
+The auto module will automatically detect and inject the script.
+
+### Provide Script URL via Global Variable
+
+Alternatively, set the script URL on the window object:
+
+```ts
+window.__WORMKEY_OVERLAY_URL__ = "http://localhost:3002/.wormkey/overlay.js?slug=quiet-lime-82";
+```
+
+## API Reference
+
+### `auto(scriptUrl?: string): boolean`
+
+Injects the Wormkey overlay script into the document.
+
+<ParamField path="scriptUrl" type="string" optional>
+  Optional script URL. If not provided, the function will attempt to read from:
+  1. `window.__WORMKEY_OVERLAY_URL__`
+  2. `<meta name="wormkey-overlay-url">` content attribute
+</ParamField>
+
+#### Returns
+
+`boolean` - Returns `true` if the script was injected or already exists, `false` if no script URL was found or if running in a non-browser environment.
+
+#### Behavior
+
+- Automatically executes when the module is imported
+- Checks if the script is already loaded to avoid duplicates
+- Creates a `<script>` tag with `defer` attribute
+- Adds `data-wormkey-overlay="1"` attribute for identification
+- Appends the script to `document.head`
+- Returns `false` if `document` is undefined (server-side rendering)
+
+## URL Priority
+
+The script URL is resolved in the following order:
+
+1. `scriptUrl` parameter (if calling `auto()` directly)
+2. `window.__WORMKEY_OVERLAY_URL__`
+3. `<meta name="wormkey-overlay-url" content="...">` attribute
+
+## Example
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="wormkey-overlay-url" content="https://wormkey.run/.wormkey/overlay.js?slug=pale-snow-91" />
+  </head>
+  <body>
+    <script type="module">
+      import "@wormkey/overlay/auto";
+    </script>
+  </body>
+</html>
+```
+
+## TypeScript
+
+The module extends the global `Window` interface:
+
+```ts
+interface Window {
+  __WORMKEY_OVERLAY_URL__?: string;
+}
+```

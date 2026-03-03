@@ -1,0 +1,622 @@
+---
+title: "Component Details"
+description: "In-depth look at CLI, Control Plane, and Edge Gateway"
+---
+
+## Component Architecture
+
+Wormkey consists of three independently deployable components. This page details the responsibilities, implementation, and configuration of each component.
+
+## CLI Client
+
+### Overview
+
+**Technology**: Node.js + TypeScript  
+**Package**: `@wormkey/cli` (npm package)  
+**Source**: `packages/cli/`  
+**Entry Point**: `wormkey` binary
+
+### Responsibilities
+
+1. **Session creation**: Call Control Plane to allocate slug and session token
+2. **Tunnel connection**: WebSocket to Edge Gateway with authentication
+3. **Request forwarding**: Proxy incoming streams to localhost
+4. **Response streaming**: Stream responses back through tunnel
+5. **Keepalive**: Send PING frames every 25s
+6. **Reconnection**: Automatic reconnect with exponential backoff
+
+### Key Files
+
+```
+packages/cli/src/
+├── index.ts          # CLI entry point, arg parsing
+├── tunnel.ts         # TunnelClient class (WebSocket, streaming)
+├── protocol.ts       # Frame encoding/decoding
+└── session.ts        # Control Plane API client
+```
+
+### Tunnel Client Implementation
+
+The `TunnelClient` class manages the WebSocket connection:
+
+```typescript
+class TunnelClient {
+  private ws: WebSocket | null;
+  private config: TunnelConfig;
+  private pendingStreams: Map<streamId, { openPayload, bodyChunks }>;
+  
+  connect(): Promise<void>
+  private handleFrame(data: Buffer)
+  private handleOpenStream(streamId, openStreamPayload, bodyChunks)
+  private send(type, streamId, payload?)
+  private startHeartbeat()
+  private handleClose()
+  close()
+}
+```
+
+From source code (`packages/cli/src/tunnel.ts:31-236`):
+
+- **PING interval**: 25 seconds
+- **PONG timeout**: 30 seconds
+- **Heartbeat failures before close**: 2
+- **Reconnect backoff**: [1s, 2s, 5s, 10s]
+
+### Request Handling Flow
+
+```typescript
+// 1. Receive OPEN_STREAM frame
+if (type === FrameType.OPEN_STREAM && payload) {
+  pendingStreams.set(streamId, { openPayload: payload, bodyChunks: [] });
+}
+
+// 2. Buffer STREAM_DATA frames
+if (type === FrameType.STREAM_DATA && payload) {
+  pending.bodyChunks.push(payload);
+}
+
+// 3. On STREAM_END, make HTTP request to localhost
+if (type === FrameType.STREAM_END) {
+  const { method, path, headers } = parseOpenStream(openPayload);
+  const body = bodyChunks.length > 0 ? Buffer.concat(bodyChunks) : undefined;
+  
+  const localUrl = `http://127.0.0.1:${localPort}${path}`;
+  const response = await request(localUrl, { method, headers, body });
+  
+  // 4. Send RESPONSE_HEADERS
+  send(FrameType.RESPONSE_HEADERS, streamId, serializeResponseHeaders(statusCode, headers));
+  
+  // 5. Stream response chunks
+  for await (const chunk of response.body) {
+    send(FrameType.STREAM_DATA, streamId, chunk);
+  }
+  
+  // 6. Send STREAM_END
+  send(FrameType.STREAM_END, streamId);
+}
+```
+
+<Note>
+The CLI streams response chunks as they arrive from localhost, enabling progressive rendering for frameworks like Next.js with React Server Components.
+</Note>
+
+### Configuration
+
+**Environment variables**:
+
+```bash
+WORMKEY_CONTROL_PLANE=http://localhost:3001
+WORMKEY_EDGE=ws://localhost:3002
+```
+
+**CLI flags**:
+
+```bash
+wormkey http 3000                # Basic usage
+wormkey http 3000 --auth         # Enable basic auth
+wormkey http 3000 --expires 30m  # Set expiration
+```
+
+---
+
+## Control Plane
+
+### Overview
+
+**Technology**: Node.js + Fastify  
+**Port**: 3001 (default)  
+**Source**: `packages/control-plane/src/index.ts`  
+**Database**: In-memory Map (v0)
+
+### Responsibilities
+
+1. **Session creation**: Allocate slug, generate tokens
+2. **Session storage**: Persist session metadata
+3. **Policy management**: Store viewer policies (public/private, password, etc.)
+4. **Viewer tracking**: Store active viewers per session
+5. **Health endpoint**: Provide health check for load balancers
+
+### API Endpoints
+
+#### POST `/sessions`
+
+Create a new tunnel session.
+
+**Request**:
+```json
+{
+  "port": 3000,
+  "authMode": "none",
+  "expiresIn": "24h"
+}
+```
+
+**Response**:
+```json
+{
+  "sessionId": "sess_abc123xyz",
+  "slug": "quiet-lime-82",
+  "publicUrl": "https://quiet-lime-82.wormkey.run",
+  "ownerUrl": "https://wormkey.run/.wormkey/owner?slug=quiet-lime-82&token=...",
+  "overlayScriptUrl": "https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-82",
+  "edgeUrl": "wss://wormkey.run/tunnel",
+  "sessionToken": "quiet-lime-82.abc123xyz",
+  "expiresAt": "2026-03-04T12:00:00Z"
+}
+```
+
+**Slug generation** (`packages/control-plane/src/index.ts:18-23`):
+
+```typescript
+function randomSlug(): string {
+  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  const num = Math.floor(Math.random() * 99) + 1;
+  return `${adj}-${noun}-${num}`;
+}
+```
+
+Examples: `quiet-lime-82`, `bold-mint-15`, `swift-rose-64`
+
+#### GET `/sessions/:id`
+
+Retrieve session by ID.
+
+#### GET `/sessions/by-slug/:slug`
+
+Retrieve session by slug (used by Edge Gateway for validation).
+
+**Response**:
+```json
+{
+  "sessionId": "sess_abc123xyz",
+  "slug": "quiet-lime-82",
+  "ownerToken": "abc123xyz",
+  "ownerUrl": "...",
+  "policy": {
+    "public": true,
+    "maxConcurrentViewers": 20,
+    "blockPaths": [],
+    "password": ""
+  },
+  "activeViewers": [],
+  "kickedViewerIds": [],
+  "closed": false
+}
+```
+
+#### POST `/sessions/by-slug/:slug/policy`
+
+Update session policy (owner only).
+
+**Request**:
+```json
+{
+  "public": false,
+  "maxConcurrentViewers": 5,
+  "blockPaths": ["/admin"],
+  "password": "secret123"
+}
+```
+
+#### POST `/sessions/by-slug/:slug/viewers`
+
+Sync active viewers (called by Edge Gateway).
+
+**Request**:
+```json
+{
+  "viewers": [
+    {
+      "id": "viewer_abc123",
+      "lastSeenAt": "2026-03-03T12:00:00Z",
+      "requests": 15,
+      "ip": "192.168.1.1"
+    }
+  ]
+}
+```
+
+#### POST `/sessions/by-slug/:slug/kick`
+
+Kick a viewer (owner only).
+
+**Request**:
+```json
+{
+  "viewerId": "viewer_abc123"
+}
+```
+
+#### POST `/sessions/by-slug/:slug/close`
+
+Close a session (owner only).
+
+#### GET `/health`
+
+Health check endpoint (returns `ok`).
+
+### Session Storage
+
+**Current implementation** (v0): In-memory `Map<sessionId, Session>`
+
+```typescript
+interface Session {
+  sessionId: string;
+  slug: string;
+  sessionToken: string;
+  ownerToken: string;
+  ownerUrl: string;
+  overlayScriptUrl: string;
+  publicUrl: string;
+  edgeUrl: string;
+  expiresAt: string;
+  createdAt: string;
+  authMode: string;
+  policy: {
+    public: boolean;
+    maxConcurrentViewers: number;
+    blockPaths: string[];
+    password: string;
+  };
+  activeViewers: Array<{ id: string; lastSeenAt: string; requests: number; ip?: string }>;
+  kickedViewerIds: string[];
+  closed: boolean;
+  username?: string;
+  password?: string;
+}
+```
+
+<Warning>
+In-memory storage means sessions are lost on restart. Future versions will use Redis or a database for persistence.
+</Warning>
+
+### Configuration
+
+**Environment variables**:
+
+```bash
+PORT=3001
+WORMKEY_PUBLIC_BASE_URL=https://wormkey.run
+WORMKEY_EDGE_BASE_URL=wss://wormkey.run
+```
+
+**Defaults**:
+- Port: 3001
+- Public base URL: `http://localhost:3002`
+- Edge base URL: `ws://localhost:3002`
+
+---
+
+## Edge Gateway
+
+### Overview
+
+**Technology**: Go (net/http, gorilla/websocket)  
+**Port**: 3002 (default)  
+**Source**: `packages/gateway/main.go`  
+
+### Responsibilities
+
+1. **TLS termination**: Handle HTTPS for `*.wormkey.run`
+2. **Slug routing**: Resolve slug from URL/host/cookie → tunnel connection
+3. **Tunnel WebSocket**: Accept CLI connections at `/tunnel`
+4. **Stream multiplexing**: Allocate stream IDs, forward frames
+5. **Policy enforcement**: Check public/private, password, viewer limits
+6. **Viewer tracking**: Track viewer IDs, sync to Control Plane
+7. **Owner overlay**: Inject overlay script for owner requests
+
+### Tunnel Connection Handler
+
+**Endpoint**: `GET /tunnel` (WebSocket upgrade)
+
+**Authentication**: `Authorization: Bearer <sessionToken>`
+
+**Flow** (`packages/gateway/main.go:739-875`):
+
+```go
+func handleTunnel(tunnels *sync.Map, closedSlugs *sync.Map, controlPlaneURL string) {
+  // 1. Validate Authorization header
+  token := r.Header.Get("Authorization")
+  slug, ownerToken := parseSessionToken(token) // Format: slug.ownerToken
+  
+  // 2. Check if session closed
+  if closedSlugs has slug → 410 Gone
+  
+  // 3. Validate with Control Plane
+  session := fetchSession(controlPlaneURL, slug)
+  if session.Closed → 410 Gone
+  if session.OwnerToken != ownerToken → 401 Unauthorized
+  
+  // 4. Upgrade to WebSocket
+  conn := upgrader.Upgrade(w, r)
+  
+  // 5. Create tunnel connection
+  tc := &tunnelConn{
+    conn: conn,
+    slug: slug,
+    ownerToken: ownerToken,
+    policy: defaultPolicy,
+    viewers: map[string]*viewerState{},
+    kickedViewers: map[string]struct{}{},
+  }
+  
+  // 6. Hydrate from Control Plane
+  hydrateFromControlPlane(controlPlaneURL, slug, tc)
+  
+  // 7. Replace old connection (if exists)
+  if existing := tunnels.Load(slug) → existing.conn.Close()
+  tunnels.Store(slug, tc)
+  
+  // 8. Read frames in loop
+  for {
+    _, data, err := conn.ReadMessage()
+    handleFrame(data) // Dispatch by frame type
+  }
+}
+```
+
+### Proxy Handler
+
+**Endpoint**: `/*` (all other requests)
+
+**Flow** (`packages/gateway/main.go:877-1000`):
+
+```go
+func handleProxy(tunnels *sync.Map, controlPlaneURL string) {
+  // 1. Resolve slug from request
+  slug := resolveSlug(r) // From path (/s/:slug), query (?slug=), cookie, or host
+  
+  if slug == "" → 404 Invalid slug
+  
+  // 2. Look up tunnel connection
+  tc := tunnels.Load(slug)
+  if !tc → 502 Wormhole not active
+  
+  // 3. Check if owner
+  owner := isOwner(r, tc) // Cookie: wormkey_owner=ownerToken
+  
+  // 4. Track viewer (if not owner)
+  if !owner {
+    viewerID := getViewerID(w, r) // Cookie: wormkey_viewer
+    if kickedViewers has viewerID → 403 Viewer removed
+    upsertViewer(viewerID, r.RemoteAddr)
+    go syncViewers(controlPlaneURL, slug, tc.viewers)
+  }
+  
+  // 5. Enforce policy
+  if !policy.Public && !owner → 401 Locked by owner
+  if policy.Password != "" && !owner && cookie != policy.Password → 401 Password required
+  if len(viewers) >= policy.MaxConcurrentViewers && !owner → 429 Too many viewers
+  if policy.BlockPaths contains r.URL.Path && !owner → 403 Path blocked
+  
+  // 6. Allocate stream ID
+  streamID := tc.streamID.Add(1) // Atomic increment
+  
+  // 7. Send OPEN_STREAM frame
+  frame := createFrame(FrameOpenStream, streamID, serializeHTTPRequest(r))
+  tc.writeFrame(frame)
+  
+  // 8. Send request body (if exists)
+  for chunk := range r.Body {
+    dataFrame := createFrame(FrameStreamData, streamID, chunk)
+    tc.writeFrame(dataFrame)
+  }
+  tc.writeFrame(createFrame(FrameStreamEnd, streamID, nil))
+  
+  // 9. Wait for RESPONSE_HEADERS, STREAM_DATA, STREAM_END
+  tc.streams.Store(streamID, &streamCtx{w: w, done: done, flusher: flusher})
+  <-done // Block until CLI sends STREAM_END
+}
+```
+
+### Slug Resolution
+
+The Edge Gateway resolves the slug from multiple sources:
+
+**Priority order** (`packages/gateway/main.go:195-235`):
+
+1. **Path-based**: `/s/:slug` → Extract slug from path
+2. **Query parameter**: `?slug=quiet-lime-82`
+3. **Cookie**: `wormkey_slug=quiet-lime-82` (for asset requests)
+4. **Host-based**: `quiet-lime-82.wormkey.run` → Extract first subdomain
+
+**Examples**:
+
+```
+https://wormkey.run/s/quiet-lime-82/api/users
+  → slug = quiet-lime-82
+  → path = /api/users
+
+https://quiet-lime-82.wormkey.run/api/users
+  → slug = quiet-lime-82
+  → path = /api/users
+
+https://wormkey.run/api/users?slug=quiet-lime-82
+  → slug = quiet-lime-82
+  → path = /api/users
+```
+
+<Note>
+Cookie-based routing enables asset requests (like `/_next/static/...`) to work correctly without embedding the slug in every asset URL.
+</Note>
+
+### Owner Overlay Injection
+
+For owner requests to HTML pages, the Edge Gateway injects the overlay script:
+
+```go
+type overlayInjectWriter struct {
+  w      http.ResponseWriter
+  slug   string
+  buf    bytes.Buffer
+  inject bool
+}
+
+func (o *overlayInjectWriter) FlushInject() {
+  body := o.buf.Bytes()
+  script := []byte(`<script defer src="/.wormkey/overlay.js?slug=" + slug + "></script>`)
+  
+  // Find </body> tag and inject script before it
+  idx := bytes.Index(bytes.ToLower(body), []byte("</body>"))
+  if idx >= 0 {
+    newBody = body[:idx] + script + body[idx:]
+  } else {
+    newBody = body + script
+  }
+  
+  w.WriteHeader(status)
+  w.Write(newBody)
+}
+```
+
+From source code (`packages/gateway/main.go:79-133`).
+
+This enables the owner control bar without requiring application code changes.
+
+### Policy Enforcement
+
+Policies are stored in `tunnelConn` and synced to Control Plane:
+
+```go
+type tunnelPolicy struct {
+  Public               bool
+  MaxConcurrentViewers int
+  BlockPaths           []string
+  Password             string
+}
+```
+
+**Enforcement checks**:
+
+- **Public**: If `false`, only owner can access
+- **MaxConcurrentViewers**: 429 Too Many Requests if exceeded
+- **BlockPaths**: 403 Forbidden if path matches
+- **Password**: 401 Unauthorized if cookie/query doesn't match
+
+### Configuration
+
+**Environment variables**:
+
+```bash
+PORT=3002
+WORMKEY_CONTROL_PLANE=https://wormkey-control-plane.onrender.com
+WORMKEY_PUBLIC_BASE_URL=https://wormkey.run
+```
+
+**Defaults**:
+- Port: 3002
+- Control Plane: `https://wormkey-control-plane.onrender.com`
+- Public Base URL: `http://localhost:3002`
+
+---
+
+## Inter-Component Communication
+
+### CLI ↔ Control Plane
+
+**Protocol**: HTTP (REST API)  
+**Usage**: Session creation only
+
+```
+CLI → Control Plane: POST /sessions
+CLI ← Control Plane: { sessionId, slug, sessionToken, publicUrl, edgeUrl }
+```
+
+### CLI ↔ Edge Gateway
+
+**Protocol**: WebSocket (binary frames)  
+**Usage**: Tunnel connection, request/response streaming
+
+```
+CLI → Edge Gateway: WebSocket /tunnel (Authorization: Bearer <sessionToken>)
+Edge → CLI: OPEN_STREAM, STREAM_DATA, STREAM_END, PING
+CLI → Edge: RESPONSE_HEADERS, STREAM_DATA, STREAM_END, PONG
+```
+
+### Edge Gateway ↔ Control Plane
+
+**Protocol**: HTTP (REST API)  
+**Usage**: Session validation, policy sync, viewer tracking
+
+```
+Edge → Control Plane: GET /sessions/by-slug/:slug
+Edge → Control Plane: POST /sessions/by-slug/:slug/policy
+Edge → Control Plane: POST /sessions/by-slug/:slug/viewers
+Edge → Control Plane: POST /sessions/by-slug/:slug/kick
+Edge → Control Plane: POST /sessions/by-slug/:slug/close
+```
+
+<Note>
+The Edge Gateway syncs state to the Control Plane asynchronously (via goroutines) to avoid blocking request processing.
+</Note>
+
+---
+
+## Deployment
+
+### Local Development
+
+**Control Plane**:
+```bash
+cd packages/control-plane
+npm install
+npm run dev
+```
+
+**Edge Gateway**:
+```bash
+cd packages/gateway
+go run .
+```
+
+**CLI**:
+```bash
+cd packages/cli
+npm install
+npm run build
+wormkey http 3000
+```
+
+### Production
+
+**Control Plane** (Node.js):
+- Deploy to any Node.js host (Render, Fly.io, AWS Lambda, etc.)
+- Set `WORMKEY_PUBLIC_BASE_URL` and `WORMKEY_EDGE_BASE_URL`
+- Use Redis or database for session storage (future)
+
+**Edge Gateway** (Go):
+- Deploy to edge locations (Fly.io, Cloudflare Workers, AWS Lambda@Edge)
+- Set `WORMKEY_CONTROL_PLANE` to Control Plane URL
+- Configure wildcard TLS for `*.wormkey.run`
+
+**CLI**:
+- Install globally: `npm i -g wormkey`
+- Or run with npx: `npx wormkey http 3000`
+
+---
+
+## Next Steps
+
+- [Architecture Overview](/architecture/overview) - High-level system design
+- [Protocol Specification](/architecture/protocol) - WebSocket frame format

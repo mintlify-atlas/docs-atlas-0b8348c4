@@ -1,80 +1,218 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Open your first wormhole to localhost in under a minute"
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+- Node.js 18 or higher
+- A local server running on any port (or use the example below)
 
-### Step 1: Set up your local environment
+## Create your first wormhole
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+Follow these steps to expose your localhost to a public URL.
+
+<Steps>
+  <Step title="Run Wormkey">
+    You can run Wormkey without installing using npx:
+    ```bash
+    npx wormkey http 3000
+    ```
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    Or install globally first:
+    ```bash
+    npm install -g wormkey
+    wormkey http 3000
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    Replace `3000` with your application's port number.
+  </Step>
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+  <Step title="View the output">
+    Wormkey will display your tunnel information:
+    ```bash
+    Control plane: https://wormkey-control-plane.onrender.com
+    Edge tunnel: wss://t.wormkey.run/tunnel
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    Wormhole open.
+    https://wormkey.run/s/quiet-lime-82
+    
+    Owner claim URL (open once):
+    https://wormkey.run/.wormkey/owner?slug=quiet-lime-82&token=abc123...
+    
+    Path B integration (add in app layout):
+    <script defer src="https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-82"></script>
+    
+    Press Ctrl+C to close.
+    ```
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Open your public URL">
+    Click the public URL (e.g., `https://wormkey.run/s/quiet-lime-82`) or share it with others.
+    
+    All requests to this URL are forwarded to your localhost.
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Claim ownership (optional)">
+    Open the owner claim URL once in your browser to enable owner controls:
+    
+    - View connection status
+    - See active viewers
+    - Manage access (future feature)
+    
+    <Warning>
+    The owner claim URL contains a secret token. Only open it once and keep it private.
+    </Warning>
+  </Step>
+</Steps>
 
-### Step 3: Go live
+## Test without a local server
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+Don't have a server running? Start a quick test server:
+
+<CodeGroup>
+```bash Python
+# Start a simple HTTP server on port 8000
+python3 -m http.server 8000
+
+# In another terminal
+wormkey http 8000
+```
+
+```bash Node.js
+# Install and run a simple server
+npx http-server -p 3000
+
+# In another terminal
+wormkey http 3000
+```
+</CodeGroup>
+
+## Enable basic authentication
+
+Protect your tunnel with a username and password:
+
+```bash
+wormkey http 3000 --auth
+```
+
+You'll see credentials in the output:
+
+```bash
+Basic auth enabled:
+  Username: wormkey_abc123
+  Password: def456ghi789jkl
+
+Wormhole open.
+https://wormkey.run/s/quiet-lime-82
+```
+
+Visitors will need to enter these credentials to access your tunnel.
+
+## Set an expiration time
+
+Control how long your tunnel stays active:
+
+```bash
+# Expire after 30 minutes
+wormkey http 3000 --expires 30m
+
+# Expire after 1 hour
+wormkey http 3000 --expires 1h
+
+# Expire after 24 hours (default)
+wormkey http 3000 --expires 24h
+```
+
+<Info>
+The tunnel closes automatically when the session expires or when you press Ctrl+C.
+</Info>
+
+## Add the overlay to your app
+
+The Wormkey overlay provides an in-page control bar when viewing your app through the wormhole URL.
+
+### Option 1: Auto-mount helper
+
+Install the overlay package:
+
+```bash
+npm install @wormkey/overlay
+```
+
+Import the auto-mount script in your app entry point:
+
+```typescript
+import "@wormkey/overlay/auto";
+```
+
+Add the overlay script URL as a meta tag:
+
+```html
+<meta name="wormkey-overlay-url" content="https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-82" />
+```
+
+### Option 2: React component
+
+For Next.js or React apps:
+
+```bash
+npm install wormkey
+```
+
+```tsx app/layout.tsx
+import { WormkeyOverlay } from "wormkey";
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        {children}
+        <WormkeyOverlay
+          gatewayUrl={process.env.NEXT_PUBLIC_WORMKEY_GATEWAY_URL ?? "https://wormkey.run"}
+        />
+      </body>
+    </html>
+  );
+}
+```
+
+### Option 3: Manual script tag
+
+Add the script tag from the CLI output to your HTML:
+
+```html
+<script defer src="https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-82"></script>
+```
+
+<Tip>
+The overlay automatically detects when your app is viewed through a wormhole URL and displays the control bar.
+</Tip>
+
+## Close the wormhole
+
+Press `Ctrl+C` in the terminal where Wormkey is running:
+
+```bash
+^C
+# Tunnel closed
+```
+
+The public URL will stop working immediately.
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Installation guide" icon="download" href="/installation">
+    Learn about global vs local installation and package manager options
+  </Card>
+  <Card title="CLI commands" icon="terminal" href="/cli/http">
+    Explore all available commands and options
+  </Card>
+  <Card title="React integration" icon="react" href="/guides/react-integration">
+    Deep dive into React and Next.js integration
+  </Card>
+  <Card title="Session configuration" icon="gear" href="/guides/session-configuration">
+    Configure authentication, expiration, and more
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

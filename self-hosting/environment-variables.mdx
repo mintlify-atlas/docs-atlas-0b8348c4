@@ -1,0 +1,290 @@
+---
+title: Environment Variables
+description: Complete reference for configuring Wormkey components
+---
+
+Wormkey uses environment variables to configure the CLI, control plane, and gateway. This page documents all available variables and their defaults.
+
+## CLI Environment Variables
+
+These variables configure the Wormkey CLI when opening tunnels.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORMKEY_CONTROL_PLANE_URL` | `http://localhost:3001` | Control plane API endpoint for session creation |
+| `WORMKEY_EDGE_URL` | `ws://localhost:3002/tunnel` | Gateway WebSocket endpoint for tunnel connections |
+
+### CLI Examples
+
+<CodeGroup>
+```bash Local Development
+WORMKEY_CONTROL_PLANE_URL=http://localhost:3001
+WORMKEY_EDGE_URL=ws://localhost:3002/tunnel
+```
+
+```bash Production
+WORMKEY_CONTROL_PLANE_URL=https://wormkey-control-plane.onrender.com
+WORMKEY_EDGE_URL=wss://wormkey-gateway.onrender.com/tunnel
+```
+
+```bash Custom Domain
+WORMKEY_CONTROL_PLANE_URL=https://control.example.com
+WORMKEY_EDGE_URL=wss://gateway.example.com/tunnel
+```
+</CodeGroup>
+
+<Note>
+Use `ws://` for local development and `wss://` (secure WebSocket) for production deployments.
+</Note>
+
+## Control Plane Environment Variables
+
+The control plane manages session lifecycle and slug allocation.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3001` | HTTP server port for control plane API |
+| `WORMKEY_PUBLIC_BASE_URL` | `http://localhost:3002` | Public-facing base URL for wormhole links (used in session creation response) |
+| `WORMKEY_EDGE_BASE_URL` | `ws://localhost:3002` | Gateway WebSocket base URL (returned to CLI for tunnel connection) |
+
+### Control Plane Configuration Details
+
+#### PORT
+
+The HTTP port where the control plane listens. The server binds to `0.0.0.0` to accept connections from any interface.
+
+**Source reference**: `packages/control-plane/src/index.ts:252`
+
+```typescript
+const port = parseInt(process.env.PORT ?? "3001", 10);
+await fastify.listen({ port, host: "0.0.0.0" });
+```
+
+#### WORMKEY_PUBLIC_BASE_URL
+
+This is the **canonical public origin** that users will visit to access wormholes. It's used to construct:
+- Public URLs: `${WORMKEY_PUBLIC_BASE_URL}/s/${slug}`
+- Owner URLs: `${WORMKEY_PUBLIC_BASE_URL}/.wormkey/owner?slug=${slug}&token=${token}`
+- Overlay script URLs: `${WORMKEY_PUBLIC_BASE_URL}/.wormkey/overlay.js?slug=${slug}`
+
+**Source reference**: `packages/control-plane/src/index.ts:34-37`
+
+```typescript
+const PUBLIC_BASE_URL =
+  process.env.WORMKEY_PUBLIC_BASE_URL ?? "http://localhost:3002";
+```
+
+#### WORMKEY_EDGE_BASE_URL
+
+The WebSocket base URL where the gateway accepts tunnel connections. The control plane returns this to the CLI during session creation.
+
+**Source reference**: `packages/control-plane/src/index.ts:36-37`
+
+```typescript
+const EDGE_BASE_URL =
+  process.env.WORMKEY_EDGE_BASE_URL ?? "ws://localhost:3002";
+```
+
+### Control Plane Examples
+
+<CodeGroup>
+```bash Local Development
+PORT=3001
+WORMKEY_PUBLIC_BASE_URL=http://localhost:3002
+WORMKEY_EDGE_BASE_URL=ws://localhost:3002
+```
+
+```bash Production (Single Domain)
+PORT=3001
+WORMKEY_PUBLIC_BASE_URL=https://wormkey.run
+WORMKEY_EDGE_BASE_URL=wss://wormkey-gateway.onrender.com
+```
+
+```bash Production (Separate Domains)
+PORT=3001
+WORMKEY_PUBLIC_BASE_URL=https://wormkey.example.com
+WORMKEY_EDGE_BASE_URL=wss://gateway.example.com
+```
+</CodeGroup>
+
+## Gateway Environment Variables
+
+The gateway handles TLS termination, routing, and stream forwarding.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3002` | HTTP/WebSocket server port |
+| `WORMKEY_CONTROL_PLANE` | `https://wormkey-control-plane.onrender.com` | Control plane URL for session validation and state sync |
+| `WORMKEY_PUBLIC_BASE_URL` | `http://localhost:3002` | Public base URL (fallback for URL generation) |
+| `WORMKEY_PUBLIC_BASE` | `http://localhost:3002` | Legacy alias for `WORMKEY_PUBLIC_BASE_URL` |
+
+### Gateway Configuration Details
+
+#### PORT
+
+The server listens on this port for both HTTP traffic and WebSocket tunnel connections. Binds to `0.0.0.0`.
+
+**Source reference**: `packages/gateway/main.go:717-720`
+
+```go
+port := os.Getenv("PORT")
+if port == "" {
+    port = "3002" // local fallback only
+}
+```
+
+#### WORMKEY_CONTROL_PLANE
+
+The gateway queries the control plane to:
+- Validate sessions and tokens
+- Fetch session policies (public/private, max viewers, blocked paths)
+- Sync viewer state and kicked viewer lists
+- Check if sessions are closed
+
+**Source reference**: `packages/gateway/main.go:480`
+
+```go
+controlPlaneURL := getEnv("WORMKEY_CONTROL_PLANE", "https://wormkey-control-plane.onrender.com")
+```
+
+<Warning>
+The gateway **requires** access to the control plane for production deployments. If the control plane is unreachable, session validation and state synchronization will fail, but existing tunnel connections will continue to work.
+</Warning>
+
+### Gateway Examples
+
+<CodeGroup>
+```bash Local Development
+PORT=3002
+WORMKEY_CONTROL_PLANE=http://localhost:3001
+WORMKEY_PUBLIC_BASE_URL=http://localhost:3002
+```
+
+```bash Production
+PORT=3002
+WORMKEY_CONTROL_PLANE=https://wormkey-control-plane.onrender.com
+WORMKEY_PUBLIC_BASE_URL=https://wormkey.run
+```
+</CodeGroup>
+
+## Session Configuration
+
+These values are **hardcoded** in the control plane but can be modified in the source code.
+
+| Setting | Default | Location |
+|---------|---------|----------|
+| Default expiration | `24h` | Can be overridden via CLI `--expires` flag |
+| Max concurrent viewers | `20` | `packages/control-plane/src/index.ts:122` |
+| Session policy defaults | `{ public: true, maxConcurrentViewers: 20, blockPaths: [], password: "" }` | `packages/control-plane/src/index.ts:120-125` |
+| Slug format | `{adjective}-{noun}-{number}` | Generated from predefined word lists |
+| Token length | 32 characters | Lowercase alphanumeric |
+| Basic auth username | `worm` | When using `--auth` flag |
+| Basic auth password length | 8 characters | Random alphanumeric |
+
+### Modifying Session Defaults
+
+To change default session behavior, edit `packages/control-plane/src/index.ts`:
+
+```typescript
+const session: Session = {
+  // ... other fields
+  policy: {
+    public: true,                    // Change to false to require owner approval
+    maxConcurrentViewers: 20,        // Increase/decrease viewer limit
+    blockPaths: [],                  // Add default blocked paths
+    password: "",                    // Set default password
+  },
+  // ...
+};
+```
+
+## Slug Generation
+
+Slugs follow the pattern `{adjective}-{noun}-{number}` (e.g., `quiet-lime-82`).
+
+**Word Lists** (`packages/control-plane/src/index.ts:9-16`):
+
+```typescript
+const ADJECTIVES = [
+  "quiet", "bold", "swift", "calm", "bright", "soft", "warm", "cool",
+  "deep", "flat", "wild", "mild", "dark", "pale", "pure", "rare", "max"
+];
+
+const NOUNS = [
+  "lime", "mint", "sage", "rose", "sky", "sea", "sand", "snow",
+  "mist", "dawn", "dusk", "flame", "storm", "wave", "wind", "frost", "tooth"
+];
+```
+
+Numbers range from 1-99.
+
+## Protocol Configuration
+
+The gateway and CLI use a binary protocol over WebSocket. Frame types are hardcoded:
+
+**Source reference**: `packages/gateway/main.go:32-44`
+
+```go
+const (
+    FrameOpenStream   = 0x01
+    FrameStreamData   = 0x02
+    FrameStreamEnd    = 0x03
+    FrameStreamCancel = 0x04
+    FrameResponseHdrs = 0x05
+    FrameWSUpgrade    = 0x06
+    FrameWSData       = 0x07
+    FrameWSClose      = 0x08
+    FramePing         = 0x09
+    FramePong         = 0x0a
+    ControlStreamID   = 0
+)
+```
+
+See the [Protocol Documentation](/architecture/protocol) for details.
+
+## Complete .env Example
+
+Here's a complete `.env` file for local development:
+
+```bash
+# ============================================
+# Wormkey Environment Configuration
+# ============================================
+
+# --------------------------------------------
+# CLI Configuration
+# --------------------------------------------
+WORMKEY_CONTROL_PLANE_URL=http://localhost:3001
+WORMKEY_EDGE_URL=ws://localhost:3002/tunnel
+
+# --------------------------------------------
+# Control Plane Configuration
+# --------------------------------------------
+# PORT=3001  # Uncomment to change from default
+WORMKEY_PUBLIC_BASE_URL=http://localhost:3002
+WORMKEY_EDGE_BASE_URL=ws://localhost:3002
+
+# --------------------------------------------
+# Gateway Configuration
+# --------------------------------------------
+# PORT=3002  # Uncomment to change from default
+WORMKEY_CONTROL_PLANE=http://localhost:3001
+WORMKEY_PUBLIC_BASE_URL=http://localhost:3002
+```
+
+## Production Considerations
+
+<Warning>
+**Security**: In production, always use HTTPS (`https://`) and secure WebSockets (`wss://`). Never expose unencrypted endpoints to the public internet.
+</Warning>
+
+### Recommended Production Setup
+
+1. **Use a reverse proxy** (nginx, Caddy) for TLS termination
+2. **Set secure WebSocket URLs** with `wss://` protocol
+3. **Configure CORS** if control plane and gateway are on different domains
+4. **Use a process manager** (PM2, systemd) to keep services running
+5. **Set up monitoring** for all three components
+6. **Consider rate limiting** at the reverse proxy level
+
+See [Deployment](/self-hosting/deployment) for detailed production setup instructions.

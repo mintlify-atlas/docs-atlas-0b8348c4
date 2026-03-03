@@ -1,0 +1,102 @@
+---
+title: "Open a wormhole to your localhost"
+description: "Wormkey is a developer tool that exposes your local server to a secure public URL instantly. No configuration required."
+---
+
+## What is Wormkey?
+
+Wormkey creates a secure tunnel from your localhost to a public URL in seconds. Perfect for:
+
+- Sharing your local development with clients or teammates
+- Testing webhooks from external services
+- Demoing features before deployment
+- Mobile device testing on real URLs
+
+<Note>
+Wormkey is not a deploy platform or hosting provider. It's a controlled wormhole to your localhost.
+</Note>
+
+## Get started in 30 seconds
+
+<Steps>
+  <Step title="Install Wormkey">
+    Install globally or use npx directly:
+    ```bash
+    npm install -g wormkey
+    ```
+  </Step>
+  <Step title="Start your local server">
+    Run your application on any port:
+    ```bash
+    # Example: Next.js on port 3000
+    npm run dev
+    ```
+  </Step>
+  <Step title="Open the wormhole">
+    Expose your local port:
+    ```bash
+    wormkey http 3000
+    ```
+  </Step>
+</Steps>
+
+You'll get a public URL like `https://wormkey.run/s/quiet-lime-82` that tunnels directly to your localhost.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Instant tunnels" icon="bolt">
+    Create a secure public URL to your localhost in seconds. No account or configuration required.
+  </Card>
+  <Card title="Basic authentication" icon="lock">
+    Protect your tunnel with username and password authentication using the `--auth` flag.
+  </Card>
+  <Card title="Owner controls" icon="shield">
+    Claim ownership of your tunnel to manage access and view connection status through a control bar.
+  </Card>
+  <Card title="React integration" icon="react">
+    Built-in React component and overlay helpers for seamless integration with Next.js and React apps.
+  </Card>
+</CardGroup>
+
+## Quick links
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get your first wormhole running in under a minute
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Installation options for npm, yarn, and pnpm
+  </Card>
+  <Card title="CLI commands" icon="terminal" href="/cli/http">
+    Explore all available commands and options
+  </Card>
+  <Card title="React integration" icon="code" href="/guides/react-integration">
+    Add the Wormkey overlay to your React app
+  </Card>
+</CardGroup>
+
+## How it works
+
+Wormkey uses a lightweight protocol to create a WebSocket tunnel between your localhost and a public edge gateway:
+
+1. The CLI connects to the control plane and requests a session
+2. You receive a unique slug (e.g., `quiet-lime-82`) and public URL
+3. The CLI establishes a WebSocket tunnel to the edge gateway
+4. Incoming HTTP requests to your public URL are forwarded through the tunnel to your localhost
+
+<Info>
+The tunnel stays open as long as the CLI is running. Press Ctrl+C to close the wormhole.
+</Info>
+
+## Architecture components
+
+| Component | Role |
+|-----------|------|
+| **CLI** (`wormkey`) | Connects to edge, forwards traffic to localhost |
+| **Control Plane** | Session creation, slug allocation |
+| **Edge Gateway** | TLS termination, routing, stream forwarding |
+
+<Card title="Learn more" icon="book" href="/architecture/overview">
+  Dive deep into the Wormkey architecture and protocol
+</Card>

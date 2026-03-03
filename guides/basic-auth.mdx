@@ -1,0 +1,126 @@
+---
+title: Basic Authentication
+description: Protect your wormhole with basic auth credentials
+---
+
+# Basic Authentication
+
+Wormkey supports HTTP Basic Authentication to protect your development server from unauthorized access. When enabled, viewers must provide a username and password to access your wormhole.
+
+## Enable Basic Auth
+
+Use the `--auth` flag when creating a wormhole:
+
+```bash
+wormkey http 3000 --auth
+```
+
+### Output
+
+When basic auth is enabled, the CLI will print the credentials:
+
+```bash
+Control plane: https://wormkey-control-plane.onrender.com
+
+Basic auth enabled:
+  Username: worm
+  Password: a1b2c3d4
+
+Edge tunnel: wss://t.wormkey.run/tunnel
+
+Wormhole open.
+https://wormkey.run/s/quiet-lime-42
+
+Owner claim URL (open once):
+https://wormkey.run/.wormkey/owner?slug=quiet-lime-42&token=...
+```
+
+<Note>
+The password is randomly generated for each session. Share these credentials with collaborators who need access.
+</Note>
+
+## How It Works
+
+<Steps>
+  <Step title="Generate credentials">
+    When `--auth` is passed, the control plane generates:
+    - **Username**: Always `worm`
+    - **Password**: Random 8-character token
+  </Step>
+
+  <Step title="Print to console">
+    The CLI displays the credentials immediately after session creation. Copy them before sharing your wormhole URL.
+  </Step>
+
+  <Step title="Enforce at the edge">
+    The edge gateway validates all incoming requests against the stored credentials using HTTP Basic Authentication.
+  </Step>
+</Steps>
+
+## Use Cases
+
+### Client Demos
+
+Share your development work with clients without exposing it publicly:
+
+```bash
+wormkey http 3000 --auth
+```
+
+Send the public URL and credentials separately for security.
+
+### Team Collaboration
+
+Allow specific team members to access your local environment:
+
+```bash
+wormkey http 5173 --auth --expires 2h
+```
+
+Credentials expire automatically when the session closes.
+
+### Staging Previews
+
+Protect feature branches during review:
+
+```bash
+wormkey http 4000 --auth --expires 24h
+```
+
+## Security Notes
+
+<Warning>
+**Basic auth transmits credentials in base64 encoding.** Always use Wormkey over HTTPS in production environments. The default production gateway uses TLS.
+</Warning>
+
+- Credentials are randomly generated per session
+- Password length: 8 characters (alphanumeric)
+- No credential reuse between sessions
+- Sessions expire based on `--expires` duration (default: 24h)
+
+## Combine with Other Options
+
+```bash
+# Auth with custom expiry
+wormkey http 3000 --auth --expires 1h
+
+# Auth with local development
+wormkey http 3000 --auth --local
+```
+
+## Disable Auth
+
+Omit the `--auth` flag to create an open wormhole:
+
+```bash
+wormkey http 3000
+```
+
+<Info>
+Public wormholes are accessible to anyone with the URL. Use basic auth for sensitive development work.
+</Info>
+
+## Related
+
+- [Session Configuration](/guides/session-configuration) - Learn about expiry and policy settings
+- [CLI Reference](/cli/http) - View all `wormkey http` options

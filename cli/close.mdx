@@ -1,0 +1,224 @@
+---
+title: 'wormkey close'
+description: 'Close active tunnel and terminate wormhole connection'
+---
+
+<Warning>
+  This command is not implemented in v0. Use Ctrl+C on the tunnel process instead.
+</Warning>
+
+## Overview
+
+The `close` command will gracefully terminate active tunnels. This feature is planned for a future release.
+
+## Usage
+
+```bash
+wormkey close [tunnel-id]
+```
+
+## Current Behavior
+
+In v0, running this command displays:
+
+```bash
+$ wormkey close
+Close not implemented in v0. Use Ctrl+C on the tunnel process.
+```
+
+## Current Method: Using Ctrl+C
+
+<Info>
+  To close a tunnel in v0, use `Ctrl+C` in the terminal where the tunnel is running:
+  
+  ```bash
+  $ wormkey http 3000
+  Wormhole open.
+  https://abc123.wormkey.run
+  
+  Press Ctrl+C to close.
+  
+  ^C  # Press Ctrl+C to close
+  ```
+</Info>
+
+The `Ctrl+C` signal triggers a graceful shutdown:
+
+1. Closes the WebSocket connection to the edge server
+2. Stops accepting new requests
+3. Terminates the CLI process
+4. Invalidates the public URL
+
+## Planned Functionality
+
+In future versions, the `close` command will:
+
+- **Close specific tunnels** - Terminate by tunnel ID or URL
+- **Close all tunnels** - Shut down all active wormholes
+- **Graceful shutdown** - Complete in-flight requests before closing
+- **Confirmation prompts** - Prevent accidental closures
+- **Remote closure** - Close tunnels from a different terminal or machine
+
+### Expected Usage Examples
+
+<CodeGroup>
+
+```bash Close specific tunnel by ID
+wormkey close abc123
+```
+
+```bash Close specific tunnel by URL
+wormkey close https://abc123.wormkey.run
+```
+
+```bash Close all tunnels
+wormkey close --all
+```
+
+```bash Force close without confirmation
+wormkey close abc123 --force
+```
+
+</CodeGroup>
+
+### Expected Output
+
+```bash
+$ wormkey close abc123
+
+Closing tunnel abc123...
+✓ Tunnel closed successfully
+
+Public URL is now inactive:
+  https://abc123.wormkey.run
+```
+
+## Planned Options
+
+<ParamField path="tunnel-id" type="string">
+  The ID or public URL of the tunnel to close. If omitted, closes all active tunnels (with confirmation).
+</ParamField>
+
+<ParamField path="--all" type="boolean">
+  Close all active tunnels without specifying individual IDs
+</ParamField>
+
+<ParamField path="--force" type="boolean">
+  Skip confirmation prompts and force close immediately
+</ParamField>
+
+<ParamField path="--wait" type="boolean">
+  Wait for in-flight requests to complete before closing (graceful shutdown)
+</ParamField>
+
+## Alternative: Kill Process
+
+If the tunnel process is unresponsive to `Ctrl+C`, you can force kill it:
+
+### Step 1: Find the Process
+
+```bash
+ps aux | grep wormkey
+```
+
+Output:
+```
+user    12345  0.1  0.5  ... node /usr/local/bin/wormkey http 3000
+```
+
+### Step 2: Kill the Process
+
+```bash
+kill 12345
+# or force kill if it doesn't respond
+kill -9 12345
+```
+
+<Warning>
+  Using `kill -9` forces immediate termination without graceful shutdown. In-flight requests may fail.
+</Warning>
+
+## Managing Background Tunnels
+
+If you run tunnels in the background, you'll need to track and close them manually:
+
+### Running in Background
+
+```bash
+# Start tunnel in background
+wormkey http 3000 > tunnel.log 2>&1 &
+
+# Save the process ID
+echo $! > tunnel.pid
+```
+
+### Closing Background Tunnel
+
+```bash
+# Read the process ID and kill it
+kill $(cat tunnel.pid)
+rm tunnel.pid
+```
+
+## Use Cases for Future Implementation
+
+When `close` is implemented, it will be useful for:
+
+<CardGroup cols={2}>
+  <Card title="Remote Management" icon="server">
+    Close tunnels from any terminal
+  </Card>
+  <Card title="Automation" icon="robot">
+    Script tunnel lifecycle management
+  </Card>
+  <Card title="Cleanup" icon="broom">
+    Close all tunnels with one command
+  </Card>
+  <Card title="Graceful Shutdown" icon="power-off">
+    Complete requests before closing
+  </Card>
+</CardGroup>
+
+## Graceful vs Force Shutdown
+
+### Graceful Shutdown (Ctrl+C)
+
+- Completes current requests
+- Closes WebSocket connection properly
+- Cleans up resources
+- Returns exit code 0
+
+### Force Shutdown (kill -9)
+
+- Immediate termination
+- May leave connections open
+- In-flight requests fail
+- Use only when graceful shutdown fails
+
+## When Tunnels Auto-Close
+
+Tunnels automatically close when:
+
+- **Session expires** - Based on `--expires` duration (default 24h)
+- **Process exits** - CLI process terminates for any reason
+- **Connection lost** - Network interruption between CLI and edge
+- **Local server down** - Target port becomes unreachable
+
+<Tip>
+  Set appropriate expiry times with `--expires` to ensure tunnels don't stay open longer than needed:
+  
+  ```bash
+  wormkey http 3000 --expires 30m  # Auto-closes after 30 minutes
+  ```
+</Tip>
+
+## Related Commands
+
+- [`wormkey http`](/cli/http) - Create a new tunnel
+- [`wormkey status`](/cli/status) - Check active tunnels before closing
+- [`wormkey login`](/cli/login) - Authenticate for remote management
+
+## See Also
+
+- [Quick Start](/quickstart) - Learn tunnel basics
+- [Self-Hosting Setup](/self-hosting/setup) - Run your own control plane

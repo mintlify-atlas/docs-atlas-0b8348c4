@@ -1,0 +1,128 @@
+---
+title: "@wormkey/overlay/express"
+description: "Express middleware for injecting the Wormkey overlay script"
+---
+
+## Overview
+
+The Express middleware automatically injects the Wormkey overlay script into HTML responses from your Express application.
+
+## Installation
+
+```bash
+npm install @wormkey/overlay
+```
+
+## Usage
+
+### Basic Setup
+
+```ts
+import express from "express";
+import { wormkeyOverlayMiddleware } from "@wormkey/overlay/express";
+
+const app = express();
+
+app.use(
+  wormkeyOverlayMiddleware({
+    scriptUrl: "http://localhost:3002/.wormkey/overlay.js?slug=quiet-lime-82",
+  })
+);
+
+app.get("/", (req, res) => {
+  res.send("<html><head><title>App</title></head><body>Hello</body></html>");
+});
+
+app.listen(3000);
+```
+
+## API Reference
+
+### `wormkeyOverlayMiddleware(options: ExpressOverlayOptions)`
+
+Creates Express middleware that injects the Wormkey overlay script into HTML responses.
+
+<ParamField path="options" type="ExpressOverlayOptions" required>
+  Configuration options for the middleware
+</ParamField>
+
+<ParamField path="options.scriptUrl" type="string" required>
+  The URL of the Wormkey overlay script. This is typically provided in the CLI output when you start a wormhole.
+</ParamField>
+
+#### Returns
+
+An Express middleware function that intercepts and modifies HTML responses.
+
+## Behavior
+
+### HTML Detection
+
+The middleware only modifies responses that:
+- Are strings
+- Have `Content-Type: text/html`
+- Don't already include the overlay script (checked via `data-wormkey-overlay="1"`)
+
+### Injection Logic
+
+The script tag is injected:
+1. **Before `</head>`** if the closing head tag exists
+2. **At the beginning of the body** if no `</head>` tag is found
+
+### Injected Script Tag
+
+```html
+<script defer data-wormkey-overlay="1" src="YOUR_SCRIPT_URL"></script>
+```
+
+The `data-wormkey-overlay="1"` attribute prevents duplicate injections.
+
+## TypeScript Types
+
+### `ExpressOverlayOptions`
+
+```ts
+interface ExpressOverlayOptions {
+  scriptUrl: string;
+}
+```
+
+## Example with Environment Variable
+
+```ts
+import express from "express";
+import { wormkeyOverlayMiddleware } from "@wormkey/overlay/express";
+
+const app = express();
+
+if (process.env.WORMKEY_OVERLAY_URL) {
+  app.use(
+    wormkeyOverlayMiddleware({
+      scriptUrl: process.env.WORMKEY_OVERLAY_URL,
+    })
+  );
+}
+
+app.get("/", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>My App</title>
+      </head>
+      <body>
+        <h1>Welcome</h1>
+      </body>
+    </html>
+  `);
+});
+
+app.listen(3000);
+```
+
+## Notes
+
+- The middleware intercepts the `res.send()` method to inject the script
+- Only HTML responses are modified (other content types pass through unchanged)
+- The middleware checks for existing script tags to prevent duplicates
+- Works with any Express-compatible framework

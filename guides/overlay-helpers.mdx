@@ -1,0 +1,256 @@
+---
+title: Overlay Helpers
+description: Auto-inject the Wormkey overlay in any app
+---
+
+# Overlay Helpers
+
+The `@wormkey/overlay` package provides helpers to automatically inject the Wormkey control bar without manual script tags.
+
+## Installation
+
+```bash
+npm install @wormkey/overlay
+```
+
+## Auto-Mount (`/auto`)
+
+Automatically detect and load the overlay script on page load.
+
+### Usage
+
+Import at your app entry point:
+
+```ts
+// src/main.ts or src/index.ts
+import "@wormkey/overlay/auto";
+```
+
+### Configuration
+
+<Tabs>
+  <Tab title="Meta Tag">
+    Add a meta tag to your HTML:
+
+    ```html
+    <meta
+      name="wormkey-overlay-url"
+      content="https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-42"
+    />
+    ```
+
+    The auto script reads this tag and injects the overlay.
+  </Tab>
+
+  <Tab title="Window Global">
+    Set a global variable before importing:
+
+    ```ts
+    window.__WORMKEY_OVERLAY_URL__ = "https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-42";
+    import "@wormkey/overlay/auto";
+    ```
+  </Tab>
+
+  <Tab title="Direct Call">
+    Import and call manually:
+
+    ```ts
+    import { auto } from "@wormkey/overlay";
+
+    auto("https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-42");
+    ```
+  </Tab>
+</Tabs>
+
+### How It Works
+
+<Steps>
+  <Step title="Detect script URL">
+    Checks (in order):
+    1. Function parameter
+    2. `window.__WORMKEY_OVERLAY_URL__`
+    3. `<meta name="wormkey-overlay-url">`
+  </Step>
+
+  <Step title="Create script element">
+    Generates `<script defer data-wormkey-overlay="1" src="..."></script>`
+  </Step>
+
+  <Step title="Append to DOM">
+    Injects into `document.head`. Skips if already present.
+  </Step>
+</Steps>
+
+### Return Value
+
+The `auto()` function returns a boolean:
+
+```ts
+import { auto } from "@wormkey/overlay";
+
+const loaded = auto();
+console.log(loaded ? "Overlay loaded" : "No URL found");
+```
+
+## Express Middleware (`/express`)
+
+Automatically inject the overlay script into HTML responses.
+
+### Usage
+
+```ts
+import express from "express";
+import { wormkeyOverlayMiddleware } from "@wormkey/overlay/express";
+
+const app = express();
+
+app.use(
+  wormkeyOverlayMiddleware({
+    scriptUrl: "https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-42",
+  })
+);
+
+app.get("/", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head><title>My App</title></head>
+      <body><h1>Hello World</h1></body>
+    </html>
+  `);
+});
+
+app.listen(3000);
+```
+
+### Options
+
+#### `scriptUrl` (required)
+
+Full overlay script URL:
+
+```ts
+wormkeyOverlayMiddleware({
+  scriptUrl: "https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-42",
+});
+```
+
+### How It Works
+
+<Steps>
+  <Step title="Intercept res.send">
+    Wraps the Express `res.send()` method to inspect responses.
+  </Step>
+
+  <Step title="Check content type">
+    Only modifies responses with `Content-Type: text/html`.
+  </Step>
+
+  <Step title="Inject script tag">
+    Inserts before `</head>` if present, otherwise at the start of the body:
+
+    ```html
+    <script defer data-wormkey-overlay="1" src="..."></script>
+    ```
+  </Step>
+
+  <Step title="Skip duplicates">
+    Does not inject if `data-wormkey-overlay="1"` already exists.
+  </Step>
+</Steps>
+
+### Dynamic Script URL
+
+Read from environment variables:
+
+```ts
+const scriptUrl = process.env.WORMKEY_OVERLAY_URL ?? "";
+
+if (scriptUrl) {
+  app.use(wormkeyOverlayMiddleware({ scriptUrl }));
+}
+```
+
+### Use with Other Middleware
+
+Place after body parsers, before routes:
+
+```ts
+import express from "express";
+import { wormkeyOverlayMiddleware } from "@wormkey/overlay/express";
+
+const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Add Wormkey overlay
+app.use(
+  wormkeyOverlayMiddleware({
+    scriptUrl: "https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-42",
+  })
+);
+
+// Define routes
+app.get("/", (req, res) => {
+  res.send("<html><body>Hello</body></html>");
+});
+
+app.listen(3000);
+```
+
+## React Component (`/react`)
+
+For React and Next.js apps, use the `<WormkeyOverlay />` component:
+
+```tsx
+import { WormkeyOverlay } from "@wormkey/overlay/react";
+// or
+import { WormkeyOverlay } from "wormkey";
+
+<WormkeyOverlay gatewayUrl="https://wormkey.run" />;
+```
+
+See [React Integration](/guides/react-integration) for full details.
+
+## Comparison
+
+| Helper | Use Case | Framework |
+|--------|----------|----------|
+| `/auto` | Auto-detect and inject | Vanilla JS, Vite, Webpack |
+| `/express` | Server-side HTML injection | Express, Node.js |
+| `/react` | React component | React, Next.js |
+
+## Local Development
+
+When using `wormkey http 3000 --local`, update URLs:
+
+```ts
+// Auto-mount with local gateway
+import { auto } from "@wormkey/overlay";
+auto("http://localhost:3002/.wormkey/overlay.js?slug=quiet-lime-42");
+
+// Express with local gateway
+app.use(
+  wormkeyOverlayMiddleware({
+    scriptUrl: "http://localhost:3002/.wormkey/overlay.js?slug=quiet-lime-42",
+  })
+);
+```
+
+## Manual Script Tag
+
+If you prefer not to use helpers, add the script tag directly:
+
+```html
+<script
+  defer
+  data-wormkey-overlay="1"
+  src="https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-42"
+></script>
+```
+
+## Related
+
+- [React Integration](/guides/react-integration) - React component details
+- [CLI Reference](/cli/http) - Get the overlay script URL from CLI output

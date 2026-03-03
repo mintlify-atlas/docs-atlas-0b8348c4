@@ -1,0 +1,198 @@
+---
+title: "Get Session"
+api: "GET /sessions/:id"
+---
+
+Retrieve session details by session ID or slug.
+
+## Get Session by ID
+
+### Endpoint
+
+```
+GET /sessions/:id
+```
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The session ID (format: `sess_<token>`)
+</ParamField>
+
+### Response
+
+<ResponseField name="sessionId" type="string" required>
+  Unique session identifier
+</ResponseField>
+
+<ResponseField name="slug" type="string" required>
+  Human-readable session slug
+</ResponseField>
+
+<ResponseField name="sessionToken" type="string" required>
+  Combined authentication token
+</ResponseField>
+
+<ResponseField name="ownerToken" type="string" required>
+  Owner authentication token
+</ResponseField>
+
+<ResponseField name="ownerUrl" type="string" required>
+  Owner dashboard URL
+</ResponseField>
+
+<ResponseField name="overlayScriptUrl" type="string" required>
+  Overlay script URL
+</ResponseField>
+
+<ResponseField name="publicUrl" type="string" required>
+  Public session URL
+</ResponseField>
+
+<ResponseField name="edgeUrl" type="string" required>
+  WebSocket edge URL
+</ResponseField>
+
+<ResponseField name="expiresAt" type="string" required>
+  ISO 8601 expiration timestamp
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 creation timestamp
+</ResponseField>
+
+<ResponseField name="authMode" type="string" required>
+  Authentication mode (`none` or `basic`)
+</ResponseField>
+
+<ResponseField name="policy" type="object" required>
+  Session policy configuration
+  
+  <ResponseField name="public" type="boolean" required>
+    Whether the session is publicly accessible
+  </ResponseField>
+  
+  <ResponseField name="maxConcurrentViewers" type="number" required>
+    Maximum number of concurrent viewers allowed
+  </ResponseField>
+  
+  <ResponseField name="blockPaths" type="string[]" required>
+    Array of blocked URL paths
+  </ResponseField>
+  
+  <ResponseField name="password" type="string" required>
+    Viewer access password (empty string if none)
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="activeViewers" type="array" required>
+  Array of currently active viewer objects
+  
+  <ResponseField name="id" type="string" required>
+    Viewer identifier
+  </ResponseField>
+  
+  <ResponseField name="lastSeenAt" type="string" required>
+    ISO 8601 timestamp of last activity
+  </ResponseField>
+  
+  <ResponseField name="requests" type="number" required>
+    Total number of requests made by this viewer
+  </ResponseField>
+  
+  <ResponseField name="ip" type="string">
+    Viewer IP address (optional)
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="kickedViewerIds" type="string[]" required>
+  Array of viewer IDs that have been kicked
+</ResponseField>
+
+<ResponseField name="closed" type="boolean" required>
+  Whether the session has been closed
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  Basic auth username (only when authMode is `basic`)
+</ResponseField>
+
+<ResponseField name="password" type="string">
+  Basic auth password (only when authMode is `basic`)
+</ResponseField>
+
+### Example Request
+
+```bash
+curl https://control.wormkey.io/sessions/sess_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+```
+
+### Example Response
+
+```json
+{
+  "sessionId": "sess_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+  "slug": "quiet-lime-42",
+  "sessionToken": "quiet-lime-42.x7y8z9a0b1c2d3e4f5g6h7i8j9k0l1m2",
+  "ownerToken": "x7y8z9a0b1c2d3e4f5g6h7i8j9k0l1m2",
+  "ownerUrl": "https://wormkey.io/.wormkey/owner?slug=quiet-lime-42&token=x7y8z9a0b1c2d3e4f5g6h7i8j9k0l1m2",
+  "overlayScriptUrl": "https://wormkey.io/.wormkey/overlay.js?slug=quiet-lime-42",
+  "publicUrl": "https://wormkey.io/s/quiet-lime-42",
+  "edgeUrl": "wss://wormkey.io/tunnel",
+  "expiresAt": "2026-03-04T15:30:00.000Z",
+  "createdAt": "2026-03-03T15:30:00.000Z",
+  "authMode": "none",
+  "policy": {
+    "public": true,
+    "maxConcurrentViewers": 20,
+    "blockPaths": [],
+    "password": ""
+  },
+  "activeViewers": [
+    {
+      "id": "viewer_abc123",
+      "lastSeenAt": "2026-03-03T15:35:00.000Z",
+      "requests": 42,
+      "ip": "203.0.113.42"
+    }
+  ],
+  "kickedViewerIds": [],
+  "closed": false
+}
+```
+
+---
+
+## Get Session by Slug
+
+### Endpoint
+
+```
+GET /sessions/by-slug/:slug
+```
+
+### Path Parameters
+
+<ParamField path="slug" type="string" required>
+  The session slug (format: `adjective-noun-number`)
+</ParamField>
+
+### Response
+
+Returns the same session object structure as the ID-based endpoint above.
+
+### Example Request
+
+```bash
+curl https://control.wormkey.io/sessions/by-slug/quiet-lime-42
+```
+
+### Error Response
+
+Both endpoints return a 404 error if the session is not found:
+
+```json
+{
+  "error": "Session not found"
+}
+```

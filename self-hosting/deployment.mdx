@@ -1,0 +1,532 @@
+---
+title: Production Deployment
+description: Deploy Wormkey to production environments
+---
+
+This guide covers deploying Wormkey's control plane and gateway to production. The architecture is designed to be cloud-agnostic and can run on any platform that supports Node.js and Go.
+
+## Deployment Architecture
+
+A production Wormkey deployment requires:
+
+1. **Control Plane** - Node.js service (port 3001)
+2. **Gateway** - Go service (port 3002)
+3. **TLS/SSL** - HTTPS and secure WebSocket (wss://) support
+
+The CLI runs on developer machines and doesn't need to be deployed.
+
+```
+┌─────────────┐      HTTPS       ┌──────────────────┐
+│   Browser   │─────────────────>│  Gateway (3002)  │
+└─────────────┘                   │  (TLS endpoint)  │
+                                  └────────┬─────────┘
+                                           │
+┌─────────────┐      WSS         ┌────────▼─────────┐
+│  CLI Tool   │─────────────────>│  Gateway (3002)  │
+└─────────────┘                   └────────┬─────────┘
+                                           │
+                                           │ HTTP
+                                           ▼
+                                  ┌──────────────────┐
+                                  │ Control Plane    │
+                                  │     (3001)       │
+                                  └──────────────────┘
+```
+
+## Pre-Deployment Checklist
+
+<Check>
+- [ ] Build artifacts created (`make build`)
+- [ ] Environment variables configured for production
+- [ ] TLS certificates obtained (Let's Encrypt, Cloudflare, etc.)
+- [ ] Domain names configured and DNS records set
+- [ ] Firewall rules allow traffic on required ports
+- [ ] Process manager or container orchestration configured
+</Check>
+
+## Building for Production
+
+<Steps>
+  <Step title="Build the Control Plane">
+    ```bash
+    cd packages/control-plane
+    npm install --production
+    npm run build
+    ```
+    
+    Output: `dist/index.js`
+  </Step>
+
+  <Step title="Build the CLI (optional)">
+    ```bash
+    cd packages/cli
+    npm install --production
+    npm run build
+    ```
+    
+    Users will install this via `npm install -g wormkey`.
+  </Step>
+
+  <Step title="Build the Gateway">
+    ```bash
+    cd packages/gateway
+    go build -o gateway .
+    ```
+    
+    Output: `gateway` binary
+  </Step>
+</Steps>
+
+## Deployment Platforms
+
+### Platform-Agnostic Considerations
+
+Wormkey can be deployed to any platform that supports:
+- Node.js 18+ runtime (control plane)
+- Go 1.20+ runtime or static binaries (gateway)
+- WebSocket connections
+- Environment variable configuration
+
+### Example: Render.com
+
+The source code references Render.com in environment variables. Here's the configuration:
+
+<CodeGroup>
+```yaml render.yaml (Control Plane)
+services:
+  - type: web
+    name: wormkey-control-plane
+    runtime: node
+    buildCommand: cd packages/control-plane && npm install && npm run build
+    startCommand: cd packages/control-plane && node dist/index.js
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: WORMKEY_PUBLIC_BASE_URL
+        value: https://wormkey.run
+      - key: WORMKEY_EDGE_BASE_URL
+        value: wss://wormkey-gateway.onrender.com
+```
+
+```yaml render.yaml (Gateway)
+services:
+  - type: web
+    name: wormkey-gateway
+    runtime: go
+    buildCommand: cd packages/gateway && go build -o gateway .
+    startCommand: ./packages/gateway/gateway
+    envVars:
+      - key: PORT
+        value: 3002
+      - key: WORMKEY_CONTROL_PLANE
+        value: https://wormkey-control-plane.onrender.com
+      - key: WORMKEY_PUBLIC_BASE_URL
+        value: https://wormkey.run
+```
+</CodeGroup>
+
+### Example: Docker Deployment
+
+<CodeGroup>
+```dockerfile Dockerfile.control-plane
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY packages/control-plane/package*.json ./
+RUN npm ci --production
+
+COPY packages/control-plane/ ./
+RUN npm run build
+
+EXPOSE 3001
+
+CMD ["node", "dist/index.js"]
+```
+
+```dockerfile Dockerfile.gateway
+FROM golang:1.20-alpine AS builder
+
+WORKDIR /app
+COPY packages/gateway/ ./
+
+RUN go mod download
+RUN go build -o gateway .
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+COPY --from=builder /app/gateway .
+
+EXPOSE 3002
+
+CMD ["./gateway"]
+```
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  control-plane:
+    build:
+      context: .
+      dockerfile: Dockerfile.control-plane
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - WORMKEY_PUBLIC_BASE_URL=https://your-domain.com
+      - WORMKEY_EDGE_BASE_URL=wss://your-gateway-domain.com
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - WORMKEY_CONTROL_PLANE=http://control-plane:3001
+      - WORMKEY_PUBLIC_BASE_URL=https://your-domain.com
+    restart: unless-stopped
+    depends_on:
+      - control-plane
+```
+</CodeGroup>
+
+### Example: Systemd Services
+
+For bare-metal or VM deployments:
+
+<CodeGroup>
+```ini /etc/systemd/system/wormkey-control-plane.service
+[Unit]
+Description=Wormkey Control Plane
+After=network.target
+
+[Service]
+Type=simple
+User=wormkey
+WorkingDirectory=/opt/wormkey/packages/control-plane
+Environment="PORT=3001"
+Environment="WORMKEY_PUBLIC_BASE_URL=https://wormkey.example.com"
+Environment="WORMKEY_EDGE_BASE_URL=wss://gateway.example.com"
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```ini /etc/systemd/system/wormkey-gateway.service
+[Unit]
+Description=Wormkey Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=wormkey
+WorkingDirectory=/opt/wormkey/packages/gateway
+Environment="PORT=3002"
+Environment="WORMKEY_CONTROL_PLANE=http://localhost:3001"
+Environment="WORMKEY_PUBLIC_BASE_URL=https://wormkey.example.com"
+ExecStart=/opt/wormkey/packages/gateway/gateway
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+</CodeGroup>
+
+Enable and start services:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable wormkey-control-plane wormkey-gateway
+sudo systemctl start wormkey-control-plane wormkey-gateway
+sudo systemctl status wormkey-control-plane wormkey-gateway
+```
+
+## TLS/SSL Configuration
+
+<Warning>
+**Required for Production**: Wormkey requires HTTPS and WSS (secure WebSocket) in production. Unencrypted connections expose tunnel traffic to interception.
+</Warning>
+
+### Option 1: Reverse Proxy (Recommended)
+
+Use nginx or Caddy to terminate TLS and proxy to Wormkey services.
+
+<CodeGroup>
+```nginx nginx.conf
+# Gateway (handles both HTTPS and WSS)
+server {
+    listen 443 ssl http2;
+    server_name wormkey.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/wormkey.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/wormkey.example.com/privkey.pem;
+
+    # WebSocket upgrade support
+    location /tunnel {
+        proxy_pass http://localhost:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Regular HTTP traffic
+    location / {
+        proxy_pass http://localhost:3002;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Control Plane
+server {
+    listen 443 ssl http2;
+    server_name control.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/control.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/control.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+```caddyfile Caddyfile
+# Gateway
+wormkey.example.com {
+    reverse_proxy localhost:3002
+}
+
+# Control Plane
+control.example.com {
+    reverse_proxy localhost:3001
+}
+```
+</CodeGroup>
+
+### Option 2: Cloudflare Tunnel
+
+Cloudflare Tunnel provides automatic TLS without exposing ports:
+
+```yaml config.yml
+tunnel: <your-tunnel-id>
+credentials-file: /path/to/credentials.json
+
+ingress:
+  - hostname: wormkey.example.com
+    service: http://localhost:3002
+  - hostname: control.example.com
+    service: http://localhost:3001
+  - service: http_status:404
+```
+
+## Environment Variables for Production
+
+Set these in your deployment platform:
+
+### Control Plane
+
+```bash
+PORT=3001
+WORMKEY_PUBLIC_BASE_URL=https://wormkey.example.com
+WORMKEY_EDGE_BASE_URL=wss://wormkey.example.com
+```
+
+### Gateway
+
+```bash
+PORT=3002
+WORMKEY_CONTROL_PLANE=https://control.example.com
+WORMKEY_PUBLIC_BASE_URL=https://wormkey.example.com
+```
+
+See [Environment Variables](/self-hosting/environment-variables) for complete reference.
+
+## State Management
+
+<Warning>
+**Important**: The current implementation (v0) uses **in-memory state** for sessions and viewer tracking. This means:
+
+- Sessions are lost on control plane restart
+- Viewer state is lost on gateway restart
+- No persistence across deployments
+
+**Source reference**: `packages/control-plane/src/index.ts:55`
+```typescript
+// In-memory session store (v0)
+const sessions = new Map<string, Session>();
+```
+</Warning>
+
+For production, consider:
+
+1. **Sticky sessions** - Route CLI connections to the same gateway instance
+2. **Short restart windows** - Minimize downtime during deploys
+3. **Database integration** (future) - Persist sessions to Redis, PostgreSQL, etc.
+4. **Session expiration** - Sessions auto-expire (default: 24h)
+
+## Monitoring and Health Checks
+
+Both services expose health check endpoints:
+
+### Control Plane
+
+```bash
+curl http://localhost:3001/health
+# Response: "ok"
+```
+
+### Gateway
+
+```bash
+curl http://localhost:3002/health
+# Response: "ok"
+```
+
+Configure your platform to poll these endpoints:
+
+- **Interval**: 30 seconds
+- **Timeout**: 5 seconds
+- **Threshold**: 3 consecutive failures trigger restart
+
+## Scaling Considerations
+
+### Current Limitations (v0)
+
+- **Single instance only** - No horizontal scaling due to in-memory state
+- **No load balancing** - Tunnel connections must reach the same gateway instance
+- **Connection limits** - Default: 20 viewers per session (configurable)
+
+### Performance Characteristics
+
+Based on the source code:
+
+- **Stream chunk size**: 32KB (`packages/gateway/main.go:974`)
+- **Control stream ID**: 0 (reserved)
+- **Binary protocol**: Low overhead for tunnel frames
+- **WebSocket multiplexing**: Multiple HTTP streams over single WebSocket
+
+### Future Scaling Strategies
+
+1. **Shared state backend** - Redis for session/viewer state
+2. **Gateway clustering** - Consistent hashing for slug→instance routing
+3. **Database persistence** - PostgreSQL for session metadata
+4. **Message queue** - For cross-instance communication
+
+## Security Best Practices
+
+<Check>
+- [ ] Use HTTPS/WSS in production (required)
+- [ ] Set secure headers (X-Frame-Options, CSP, etc.)
+- [ ] Rate limit session creation at control plane
+- [ ] Configure firewall rules (allow only 443, block direct port access)
+- [ ] Use environment variables for secrets (never hardcode)
+- [ ] Enable CORS only for trusted origins
+- [ ] Monitor for abnormal traffic patterns
+- [ ] Implement request logging and audit trails
+- [ ] Keep dependencies updated (`npm audit`, `go list -m all`)
+</Check>
+
+## Troubleshooting Production Issues
+
+### Sessions not persisting
+
+**Cause**: In-memory storage clears on restart.
+
+**Solution**: Accept this limitation in v0, or implement database persistence.
+
+### WebSocket connections failing
+
+**Causes**:
+- Reverse proxy not configured for WebSocket upgrade
+- Firewall blocking WebSocket traffic
+- TLS certificate issues
+
+**Debug**:
+```bash
+# Test WebSocket connection
+wscat -c wss://your-gateway.com/tunnel
+
+# Check reverse proxy logs
+sudo tail -f /var/log/nginx/error.log
+```
+
+### Control plane unreachable from gateway
+
+**Causes**:
+- Network policy blocking internal traffic
+- Wrong `WORMKEY_CONTROL_PLANE` URL
+- Control plane not started
+
+**Debug**:
+```bash
+# From gateway container/server
+curl http://control-plane:3001/health
+
+# Check environment variables
+echo $WORMKEY_CONTROL_PLANE
+```
+
+### High memory usage
+
+**Cause**: In-memory session storage grows over time.
+
+**Mitigation**:
+- Set shorter session expiration
+- Implement periodic cleanup of expired sessions
+- Restart services during low-traffic windows
+
+## CLI Configuration for Production
+
+Users connecting to your self-hosted instance need to configure their CLI:
+
+```bash
+# Set environment variables
+export WORMKEY_CONTROL_PLANE_URL=https://control.example.com
+export WORMKEY_EDGE_URL=wss://wormkey.example.com/tunnel
+
+# Or add to ~/.bashrc / ~/.zshrc
+echo 'export WORMKEY_CONTROL_PLANE_URL=https://control.example.com' >> ~/.bashrc
+echo 'export WORMKEY_EDGE_URL=wss://wormkey.example.com/tunnel' >> ~/.bashrc
+
+# Then use normally
+wormkey http 3000
+```
+
+## Cost Optimization
+
+Wormkey is lightweight and can run on minimal infrastructure:
+
+- **Control Plane**: 256MB RAM, 0.25 vCPU (handles session metadata only)
+- **Gateway**: 512MB RAM, 0.5 vCPU (handles all proxy traffic)
+- **Storage**: None required (in-memory only)
+- **Database**: None required in v0
+
+Estimated costs for small deployments:
+- **Render/Railway**: ~$10-20/month (2 services)
+- **DigitalOcean Droplet**: ~$12/month (1 VM, both services)
+- **AWS Lightsail**: ~$10/month (1 instance)
+
+## Next Steps
+
+- Review [Environment Variables](/self-hosting/environment-variables) reference
+- Read the [Protocol Specification](/architecture/protocol) to understand internals
+- Set up monitoring and alerting
+- Plan for database integration (future)
+- Join the community for support

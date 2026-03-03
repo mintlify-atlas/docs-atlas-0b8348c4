@@ -1,0 +1,223 @@
+---
+title: "Architecture Overview"
+description: "Understanding Wormkey's distributed tunnel architecture"
+---
+
+## System Architecture
+
+Wormkey is a distributed tunneling system that consists of three core components working together to expose local servers through secure public URLs:
+
+<Note>
+Wormkey uses a persistent WebSocket tunnel from your CLI to the Edge Gateway, eliminating the need for inbound firewall rules or port forwarding.
+</Note>
+
+## Component Overview
+
+| Component | Technology | Port | Role |
+|-----------|-----------|------|------|
+| **CLI** | Node.js/TypeScript | — | Connects to Edge, forwards traffic to localhost |
+| **Control Plane** | Node.js/Fastify | 3001 | Session creation, slug allocation, lifecycle management |
+| **Edge Gateway** | Go | 3002 | TLS termination, routing, stream multiplexing |
+
+## Architecture Diagram
+
+```
+┌─────────────────┐
+│   Public Web    │
+│                 │
+│  quiet-lime-82  │
+│  .wormkey.run   │
+└────────┬────────┘
+         │ HTTPS
+         ▼
+┌─────────────────┐
+│  Edge Gateway   │◄───────── Control Plane
+│   (Go:3002)     │           (Node:3001)
+│                 │           • Session mgmt
+│ • TLS           │           • Slug allocation
+│ • Routing       │           • Policy store
+│ • Multiplexing  │
+└────────┬────────┘
+         │ WebSocket
+         │ Tunnel
+         ▼
+┌─────────────────┐
+│   CLI Client    │
+│  (TypeScript)   │
+│                 │
+│ wormkey http    │
+│      3000       │
+└────────┬────────┘
+         │ HTTP
+         ▼
+┌─────────────────┐
+│  localhost:3000 │
+│   Your App      │
+└─────────────────┘
+```
+
+## Data Flow
+
+### 1. Session Creation
+
+When you run `wormkey http 3000`:
+
+1. **CLI → Control Plane**: `POST /sessions` with port and options
+2. **Control Plane generates**:
+   - Random slug (e.g., `quiet-lime-82`)
+   - Session token (format: `slug.ownerToken`)
+   - Public URL (`https://quiet-lime-82.wormkey.run`)
+   - Owner claim URL (one-time use)
+3. **Control Plane returns**: Session metadata to CLI
+
+### 2. Tunnel Establishment
+
+1. **CLI → Edge Gateway**: WebSocket connection to `/tunnel`
+2. **Authorization**: `Bearer slug.ownerToken` in header
+3. **Edge Gateway**:
+   - Validates token with Control Plane
+   - Binds `slug` → WebSocket connection
+   - Starts accepting public traffic for that slug
+
+### 3. Request Proxying
+
+**Public request flow**:
+
+```
+Browser → Edge Gateway → CLI → localhost:3000 → CLI → Edge → Browser
+         (WebSocket frames)  (HTTP)            (HTTP)  (WebSocket frames)
+```
+
+1. **Browser** sends HTTPS request to `quiet-lime-82.wormkey.run`
+2. **Edge Gateway**:
+   - TLS terminates request
+   - Looks up slug → tunnel connection
+   - Allocates stream ID
+   - Sends `OPEN_STREAM` frame with request headers/body
+3. **CLI**:
+   - Receives frame
+   - Makes HTTP request to `localhost:3000`
+   - Sends `RESPONSE_HEADERS` and `STREAM_DATA` frames back
+4. **Edge Gateway**: Forwards response to browser
+
+<Note>
+All traffic is multiplexed over a single WebSocket connection using frame-based streams. Each HTTP request gets a unique stream ID.
+</Note>
+
+## Key Design Principles
+
+### Outbound-Only Connection
+
+The CLI initiates and maintains the WebSocket connection to the Edge Gateway. This means:
+- No inbound firewall rules needed
+- Works behind NAT and corporate proxies
+- CLI can run on developer laptops without port forwarding
+
+### Stream Multiplexing
+
+A single WebSocket connection carries multiple concurrent HTTP requests:
+- Each request gets a unique 32-bit stream ID
+- Streams are independent and can overlap
+- Max 100 concurrent streams per tunnel (configurable)
+
+### Stateless Edge
+
+The Edge Gateway is designed to be stateless:
+- Session metadata stored in Control Plane
+- Active tunnels held in memory (can be replicated)
+- CLI automatically reconnects with same session token
+
+### Session Persistence
+
+Sessions survive CLI reconnections:
+- CLI disconnects (network issue, sleep, etc.)
+- Edge Gateway closes old connection
+- CLI reconnects with same `sessionToken`
+- Edge Gateway replaces slug → connection mapping
+- Public URL remains valid
+
+## Deployment Topology
+
+### Local Development
+
+```bash
+# Terminal 1: Control Plane
+cd packages/control-plane && npm run dev
+
+# Terminal 2: Edge Gateway
+cd packages/gateway && go run .
+
+# Terminal 3: CLI
+wormkey http 3000
+```
+
+All components run on `localhost`.
+
+### Production
+
+- **Control Plane**: Deployed to any Node.js host (e.g., Render, Fly.io)
+- **Edge Gateway**: Deployed to edge locations (e.g., Fly.io multi-region)
+- **CLI**: Runs on developer machines or CI environments
+
+<Note>
+The Edge Gateway needs to be accessible from public internet with wildcard TLS for `*.wormkey.run`.
+</Note>
+
+## Environment Configuration
+
+Each component uses environment variables for service discovery:
+
+### CLI
+
+```bash
+WORMKEY_CONTROL_PLANE=http://localhost:3001
+WORMKEY_EDGE=ws://localhost:3002
+```
+
+### Control Plane
+
+```bash
+PORT=3001
+WORMKEY_PUBLIC_BASE_URL=http://localhost:3002
+WORMKEY_EDGE_BASE_URL=ws://localhost:3002
+```
+
+### Edge Gateway
+
+```bash
+PORT=3002
+WORMKEY_CONTROL_PLANE=http://localhost:3001
+WORMKEY_PUBLIC_BASE_URL=http://localhost:3002
+```
+
+## Security Model
+
+### Owner Authentication
+
+- **Session Token**: `slug.ownerToken` (e.g., `quiet-lime-82.abc123xyz`)
+- CLI uses full token for tunnel authentication
+- Owner can claim browser session via one-time URL
+- Owner cookie: `wormkey_owner=ownerToken` (HttpOnly)
+
+### Viewer Tracking
+
+- Non-owner requests get a `wormkey_viewer` cookie with random ID
+- Edge Gateway tracks active viewers per session
+- Owner can kick viewers or lock the wormhole
+
+### Policy Enforcement
+
+Owner can configure:
+- **Public/Private**: Lock wormhole to owner-only
+- **Max Viewers**: Limit concurrent viewers
+- **Password**: Require password for viewers
+- **Block Paths**: Block access to specific routes (e.g., `/admin`)
+
+<Warning>
+Owner tokens are secrets. The one-time owner claim URL should only be opened once and not shared.
+</Warning>
+
+## Next Steps
+
+- [Protocol Specification](/architecture/protocol) - WebSocket frame format and stream lifecycle
+- [Component Details](/architecture/components) - In-depth look at each component

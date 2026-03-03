@@ -1,0 +1,106 @@
+---
+title: "<WormkeyOverlay />"
+description: "React component that automatically loads the Wormkey overlay bar for tunnel owners"
+---
+
+The `<WormkeyOverlay />` component is a React component designed for Next.js and React applications. It automatically loads the Wormkey overlay script, which displays an owner control bar when your app is viewed through a wormhole URL.
+
+## Installation
+
+```bash
+npm install wormkey
+```
+
+## Usage
+
+Add the component to your root layout (e.g., Next.js `app/layout.tsx`):
+
+```tsx
+import { WormkeyOverlay } from "wormkey";
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        {children}
+        <WormkeyOverlay
+          gatewayUrl={process.env.NEXT_PUBLIC_WORMKEY_GATEWAY_URL ?? "https://wormkey.run"}
+        />
+      </body>
+    </html>
+  );
+}
+```
+
+## Props
+
+<ParamField path="scriptUrl" type="string" optional>
+  Full overlay script URL. If provided, this takes precedence over `gatewayUrl` and `slug`.
+  
+  Example: `https://wormkey.run/.wormkey/overlay.js?slug=pale-snow-91`
+</ParamField>
+
+<ParamField path="gatewayUrl" type="string" optional>
+  Gateway base URL used with `slug` to construct the script URL.
+  
+  Default: Falls back to `process.env.NEXT_PUBLIC_WORMKEY_GATEWAY_URL`
+  
+  Example: `https://wormkey.run`
+</ParamField>
+
+<ParamField path="slug" type="string" optional>
+  The wormhole slug identifier. If omitted, the component automatically derives it from the URL path when viewing at `/s/:slug`.
+  
+  Example: `pale-snow-91`
+</ParamField>
+
+## Behavior
+
+The component implements intelligent auto-detection:
+
+1. **Slug resolution**: If no `slug` prop is provided, it automatically extracts the slug from URLs matching the pattern `/s/:slug`
+2. **Gateway URL**: Uses `gatewayUrl` prop, falls back to `NEXT_PUBLIC_WORMKEY_GATEWAY_URL` environment variable
+3. **Script URL construction**: Builds the overlay script URL as `{gatewayUrl}/.wormkey/overlay.js?slug={slug}&v=2`
+4. **Client-side only**: Only runs in browser environments (safe for SSR)
+5. **Duplicate prevention**: Ensures only one overlay script is loaded per page
+
+<Note>
+  The component renders `null` and has no visual output. It only manages loading the overlay script, which then injects the owner control bar into the page.
+</Note>
+
+## Environment Variables
+
+<ParamField path="NEXT_PUBLIC_WORMKEY_GATEWAY_URL" type="string">
+  Default gateway URL used when `gatewayUrl` prop is not provided.
+  
+  Example: `https://wormkey.run`
+</ParamField>
+
+## Examples
+
+### Explicit script URL
+
+```tsx
+<WormkeyOverlay scriptUrl="https://wormkey.run/.wormkey/overlay.js?slug=quiet-lime-82" />
+```
+
+### Gateway URL with auto-detected slug
+
+```tsx
+<WormkeyOverlay gatewayUrl="https://wormkey.run" />
+```
+
+When viewing the page at `/s/quiet-lime-82`, the slug is automatically detected.
+
+### Explicit slug
+
+```tsx
+<WormkeyOverlay 
+  gatewayUrl="https://wormkey.run"
+  slug="quiet-lime-82"
+/>
+```
+
+## Source
+
+Location: `packages/cli/src/overlay.tsx`

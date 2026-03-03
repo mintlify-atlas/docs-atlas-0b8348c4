@@ -1,0 +1,180 @@
+---
+title: 'wormkey status'
+description: 'Show active tunnel status and information'
+---
+
+<Warning>
+  This command is not implemented in v0.
+</Warning>
+
+## Overview
+
+The `status` command will display information about active tunnels, including connection status, traffic statistics, and session details. This feature is planned for a future release.
+
+## Usage
+
+```bash
+wormkey status
+```
+
+## Current Behavior
+
+In v0, running this command displays:
+
+```bash
+$ wormkey status
+Status not implemented in v0.
+```
+
+## Planned Functionality
+
+In future versions, the `status` command will show:
+
+- **Active tunnels** - List of all running wormholes
+- **Connection status** - Health and connectivity information
+- **Traffic statistics** - Request counts, bandwidth usage
+- **Session details** - Expiry time, authentication status
+- **Public URLs** - Accessible endpoints
+
+### Expected Output
+
+```bash
+$ wormkey status
+
+Active Tunnels:
+
+┌─────────────────────────────────────────────────────┐
+│ Tunnel 1                                            │
+├─────────────────────────────────────────────────────┤
+│ Local Port:    3000                                 │
+│ Public URL:    https://abc123.wormkey.run           │
+│ Status:        Connected                            │
+│ Uptime:        2h 34m                               │
+│ Requests:      1,234                                │
+│ Auth:          Enabled                              │
+│ Expires:       in 21h 26m                           │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│ Tunnel 2                                            │
+├─────────────────────────────────────────────────────┤
+│ Local Port:    8080                                 │
+│ Public URL:    https://xyz789.wormkey.run           │
+│ Status:        Connected                            │
+│ Uptime:        45m                                  │
+│ Requests:      89                                   │
+│ Auth:          Disabled                             │
+│ Expires:       in 23h 15m                           │
+└─────────────────────────────────────────────────────┘
+
+Total active tunnels: 2
+```
+
+## Planned Options
+
+<ParamField path="--json" type="boolean">
+  Output status information in JSON format for scripting and automation
+</ParamField>
+
+<ParamField path="--watch" type="boolean">
+  Continuously monitor and update status in real-time
+</ParamField>
+
+<ParamField path="--verbose" type="boolean">
+  Show detailed connection and traffic information
+</ParamField>
+
+### JSON Output Example
+
+```json
+{
+  "tunnels": [
+    {
+      "id": "abc123",
+      "localPort": 3000,
+      "publicUrl": "https://abc123.wormkey.run",
+      "status": "connected",
+      "uptime": 9240,
+      "requests": 1234,
+      "auth": true,
+      "expiresIn": 77160
+    }
+  ],
+  "total": 1
+}
+```
+
+## Current Workarounds
+
+<Info>
+  In v0, you can check tunnel status by looking at the CLI output when you start a tunnel:
+  
+  ```bash
+  $ wormkey http 3000
+  Control plane: https://wormkey-control-plane.onrender.com
+  Edge tunnel: wss://t.wormkey.run/tunnel
+  
+  Wormhole open.
+  https://abc123.wormkey.run
+  ```
+  
+  The tunnel is active as long as the process is running. Press Ctrl+C to close it.
+</Info>
+
+## Checking If a Tunnel is Active
+
+### Method 1: Process Listing
+
+Check if a `wormkey` process is running:
+
+```bash
+ps aux | grep wormkey
+```
+
+### Method 2: Test the Public URL
+
+Visit or curl the public URL provided when you started the tunnel:
+
+```bash
+curl https://abc123.wormkey.run
+```
+
+### Method 3: Check Local Port
+
+Verify your local service is running:
+
+```bash
+lsof -i :3000
+# or
+netstat -an | grep 3000
+```
+
+## Use Cases
+
+When implemented, `status` will be useful for:
+
+<CardGroup cols={2}>
+  <Card title="Monitoring" icon="display">
+    Track tunnel health and uptime
+  </Card>
+  <Card title="Debugging" icon="bug">
+    Identify connection issues
+  </Card>
+  <Card title="Analytics" icon="chart-line">
+    Review traffic and usage patterns
+  </Card>
+  <Card title="Management" icon="sliders">
+    Manage multiple active tunnels
+  </Card>
+</CardGroup>
+
+## Related Commands
+
+- [`wormkey http`](/cli/http) - Create a new tunnel
+- [`wormkey close`](/cli/close) - Close an active tunnel
+- [`wormkey login`](/cli/login) - Authenticate to access status features
+
+## See Also
+
+- [Quick Start](/quickstart) - Get started with Wormkey
+- [Self-Hosting Setup](/self-hosting/setup) - Common issues and solutions
