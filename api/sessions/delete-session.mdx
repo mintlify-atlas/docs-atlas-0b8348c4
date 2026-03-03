@@ -1,0 +1,59 @@
+---
+title: "Delete Session"
+api: "DELETE /sessions/:id"
+---
+
+Delete a session by its session ID.
+
+## Endpoint
+
+```http
+DELETE /sessions/:id
+```
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The session ID (format: `sess_<random-token>`)
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean" required>
+  Whether the deletion was successful
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X DELETE https://control.wormkey.io/sessions/sess_abc123xyz789
+```
+
+## Example Response
+
+```json
+{
+  "ok": true
+}
+```
+
+## Behavior
+
+- Removes the session from the control plane's in-memory store
+- Does not notify connected clients (they will discover the session is gone on next request)
+- Cannot be undone
+
+<Note>
+  In v0, sessions are stored in memory and will be lost when the control plane restarts.
+</Note>
+
+## Use Cases
+
+- Clean up expired sessions
+- Free resources after a tunnel is closed
+- Administrative session management
+
+## Related Endpoints
+
+- [Create Session](/api/sessions/create-session) - Create a new session
+- [Get Session](/api/sessions/get-session) - Retrieve session details

@@ -90,7 +90,9 @@
               "api/sessions/create-session",
               "api/sessions/get-session",
               "api/sessions/update-policy",
-              "api/sessions/manage-viewers"
+              "api/sessions/manage-viewers",
+              "api/sessions/delete-session",
+              "api/sessions/close-session"
             ]
           }
         ]

@@ -11,8 +11,9 @@ These variables configure the Wormkey CLI when opening tunnels.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WORMKEY_CONTROL_PLANE_URL` | `http://localhost:3001` | Control plane API endpoint for session creation |
-| `WORMKEY_EDGE_URL` | `ws://localhost:3002/tunnel` | Gateway WebSocket endpoint for tunnel connections |
+| `WORMKEY_ENV` | (none) | Set to `local` to use localhost defaults for control plane and edge |
+| `WORMKEY_CONTROL_PLANE_URL` | Production: `https://wormkey-control-plane.onrender.com`<br/>Local: `http://localhost:3001` | Control plane API endpoint for session creation |
+| `WORMKEY_EDGE_URL` | Production: `wss://t.wormkey.run/tunnel`<br/>Local: `ws://localhost:3002/tunnel` | Gateway WebSocket endpoint for tunnel connections |
 
 ### CLI Examples
 

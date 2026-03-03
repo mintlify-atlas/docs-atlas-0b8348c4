@@ -1,0 +1,61 @@
+---
+title: "Close Session"
+api: "POST /sessions/by-slug/:slug/close"
+---
+
+Mark a session as closed, preventing new connections.
+
+## Endpoint
+
+```http
+POST /sessions/by-slug/:slug/close
+```
+
+## Path Parameters
+
+<ParamField path="slug" type="string" required>
+  The session slug (format: `adjective-noun-number`)
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean" required>
+  Whether the session was successfully closed
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST https://control.wormkey.io/sessions/by-slug/quiet-lime-42/close
+```
+
+## Example Response
+
+```json
+{
+  "ok": true
+}
+```
+
+## Behavior
+
+- Sets the session's `closed` flag to `true`
+- The session remains in the control plane's memory
+- The edge gateway should check this flag before allowing new connections
+- Existing connections may continue until they disconnect
+
+<Warning>
+  Closing a session does not immediately terminate active tunnel connections. Use this endpoint to prevent new connections to an existing session.
+</Warning>
+
+## Use Cases
+
+- Gracefully shut down a tunnel without deleting the session record
+- Prevent new viewers from joining while existing viewers finish
+- Administrative control over session access
+
+## Related Endpoints
+
+- [Delete Session](/api/sessions/delete-session) - Permanently delete a session
+- [Update Policy](/api/sessions/update-policy) - Control session access policies
+- [Get Session](/api/sessions/get-session) - Check if a session is closed
